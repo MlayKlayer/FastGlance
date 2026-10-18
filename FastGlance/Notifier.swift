@@ -38,12 +38,13 @@ struct ActionStatus {
 
     /// Text ending in "…" means still running; anything else clears itself after a few seconds.
     /// With the menu closed (a hotkey, option-click) failures, and results that are the point of the action, go out as notifications.
-    func report(_ deviceID: String, _ name: String, _ text: String, failed: Bool = false, notify: Bool = false, retry: (() -> Void)? = nil) {
+    func report(_ deviceID: String, _ name: String, _ text: String, failed: Bool = false, notify: Bool = false,
+                lasts: TimeInterval? = nil, retry: (() -> Void)? = nil) {
         let busy = text.hasSuffix("…")
         if !busy, failed || notify, !isMenuOpen() { post(name, text) }
         let status = ActionStatus(text: text, failed: failed, retry: retry)
         statuses[deviceID] = status
-        DispatchQueue.main.asyncAfter(deadline: .now() + (busy ? 30 : failed ? 10 : 5)) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + (lasts ?? (busy ? 30 : failed ? 10 : 5))) { [weak self] in
             if self?.statuses[deviceID]?.id == status.id { self?.statuses[deviceID] = nil }
         }
     }

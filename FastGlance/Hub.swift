@@ -44,6 +44,7 @@ enum Prefs {
     let bluetooth: BluetoothSource
     let network = NetworkSource()
     let cameras = CameraSource()
+    private let printers: PrinterSource
     private let sources: [DeviceSource]
     private var history = DeviceHistory.load()
     private var refreshQueued = false
@@ -53,6 +54,7 @@ enum Prefs {
         bluetooth = BluetoothSource(audio: audio)
         let usb = USBSource()
         let printers = PrinterSource(usb: usb, network: network)
+        self.printers = printers
         usb.claimedSerials = { [weak printers] in printers?.usbSerials ?? [] }
         network.claimedServiceNames = { [weak printers] in printers?.dnssdNames ?? [] }
         sources = [InternetSource(), bluetooth, audio, usb, disks, DisplaySource(), cameras, printers, network]
@@ -63,6 +65,14 @@ enum Prefs {
             s.onChange = { [weak self] in self?.queueRefresh() }
             s.start()
         }
+        refresh()
+    }
+
+    /// Slower sources freshen up when someone is about to look.
+    func menuWillOpen() {
+        bluetooth.refreshIfStale()
+        printers.reload()
+        network.sweepIfDue(maxAge: 30)
         refresh()
     }
 

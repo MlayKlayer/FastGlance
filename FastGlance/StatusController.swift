@@ -47,7 +47,7 @@ import SwiftUI
         } else if popover.isShown {
             popover.performClose(nil)
         } else {
-            hub.refresh()
+            hub.menuWillOpen()
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
         }

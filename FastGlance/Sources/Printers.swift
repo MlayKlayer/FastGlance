@@ -22,13 +22,20 @@ import AppKit
     }
 
     func start() {
-        _ = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.reload() } }
+        // lpstat + ipptool per queue isn't free: every 30 s while the menu is open, every 5 min otherwise.
+        _ = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in MainActor.assumeIsolated {
+            guard let self, Notifier.shared.isMenuOpen() || Date().timeIntervalSince(self.loadedAt) >= 300 else { return }
+            self.reload()
+        } }
         reload()
     }
+
+    private var loadedAt = Date.distantPast
 
     func reload() {
         guard !loading else { return }
         loading = true
+        loadedAt = Date()
         DispatchQueue.global(qos: .utility).async {
             let names = Util.text("/usr/bin/lpstat", ["-e"]).split(separator: "\n").map(String.init)
             let queues = names.map { name in

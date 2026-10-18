@@ -11,6 +11,8 @@ enum DisplayBrightness {
     private static let getter = handle.flatMap { dlsym($0, "DisplayServicesGetBrightness") }.map { unsafeBitCast($0, to: Getter.self) }
     private static let setter = handle.flatMap { dlsym($0, "DisplayServicesSetBrightness") }.map { unsafeBitCast($0, to: Setter.self) }
 
+    static var isAvailable: Bool { getter != nil && setter != nil }
+
     static func get(_ display: CGDirectDisplayID) -> Float? {
         var v: Float = 0
         guard let getter, getter(display, &v) == 0 else { return nil }

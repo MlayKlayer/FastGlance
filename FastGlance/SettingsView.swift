@@ -1,5 +1,9 @@
 import SwiftUI
 import ServiceManagement
+import CoreBluetooth
+import CoreLocation
+import AVFoundation
+import UserNotifications
 
 struct SettingsView: View {
     @EnvironmentObject var hub: DeviceHub
@@ -138,6 +142,8 @@ struct SettingsView: View {
                     }
             }
 
+            AccessSection()
+
             Section {
                 LabeledContent("Version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—")
             }
@@ -176,4 +182,72 @@ struct KindToggles: View {
     }
 
     private var off: Set<String> { Set(raw.split(separator: ",").map(String.init)) }
+}
+
+/// What macOS lets FastGlance do, and where to change it.
+struct AccessSection: View {
+    @State private var notifications = UNAuthorizationStatus.notDetermined
+
+    var body: some View {
+        Section {
+            let bt = CBManager.authorization
+            AccessRow(title: "Bluetooth", purpose: "List, connect and read battery of Bluetooth devices",
+                      state: bt == .allowedAlways ? .allowed : bt == .notDetermined ? .notAsked : .denied, pane: "Privacy_Bluetooth")
+            let loc = CLLocationManager().authorizationStatus
+            AccessRow(title: "Location", purpose: "Show the Wi-Fi network name (macOS ties it to location)",
+                      state: [.authorizedAlways, .authorized].contains(loc) ? .allowed : loc == .notDetermined ? .notAsked : .denied,
+                      pane: "Privacy_LocationServices")
+            let cam = AVCaptureDevice.authorizationStatus(for: .video)
+            AccessRow(title: "Camera", purpose: "Camera preview",
+                      state: cam == .authorized ? .allowed : cam == .notDetermined ? .notAsked : .denied, pane: "Privacy_Camera")
+            AccessRow(title: "Notifications", purpose: "Connection, battery and action alerts",
+                      state: [.authorized, .provisional].contains(notifications) ? .allowed : notifications == .notDetermined ? .notAsked : .denied,
+                      url: "x-apple.systempreferences:com.apple.Notifications-Settings.extension")
+            AccessRow(title: "Display brightness", purpose: "Built-in and Apple displays (private macOS API)",
+                      state: DisplayBrightness.isAvailable ? .available : .unavailable)
+            AccessRow(title: "Monitor control (DDC)", purpose: "Brightness, volume and input of external monitors",
+                      state: DDC.isAvailable ? .available : .unavailable)
+        } header: {
+            Text("Access")
+        } footer: {
+            Text("Everything else keeps working without these; only the matching features switch off.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        .task { await reload() }
+        // Coming back from System Settings.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in Task { await reload() } }
+    }
+
+    private func reload() async {
+        notifications = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+    }
+}
+
+struct AccessRow: View {
+    enum State { case allowed, denied, notAsked, available, unavailable }
+    let title: String
+    let purpose: String
+    let state: State
+    var pane: String? = nil
+    var url: String? = nil
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                Text(purpose).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            switch state {
+            case .allowed: Text("Allowed").foregroundStyle(.secondary)
+            case .available: Text("Available").foregroundStyle(.secondary)
+            case .notAsked: Text("Not asked yet").foregroundStyle(.secondary)
+            case .unavailable: Text("Unavailable on this macOS").foregroundStyle(.orange)
+            case .denied:
+                Button("Allow in Settings…") {
+                    Util.open(url ?? "x-apple.systempreferences:com.apple.preference.security?\(pane ?? "")")
+                }
+            }
+        }
+    }
 }
