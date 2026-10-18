@@ -4,3 +4,20 @@ DerivedData/
 .DS_Store
 xcuserdata/
 HANDOFF.md
+
+# Local settings, signing material, and distribution output
+.env
+.env.*
+!.env.example
+*.xcuserstate
+*.xcarchive/
+*.xcresult/
+*.p12
+*.p8
+*.mobileprovision
+*.provisionprofile
+*.dSYM/
+dist/
+project.local.yml
+history.json
+history.corrupt.json

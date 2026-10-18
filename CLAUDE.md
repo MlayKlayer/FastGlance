@@ -1,6 +1,6 @@
 # FastGlance
 
-macOS menu bar app (Swift/SwiftUI + AppKit, macOS 14+, Apple Silicon) that lists every device connected to the Mac — wired, wireless and on the LAN — remembers past ones, and offers quick actions. Personal tool, planned for GitHub. UI language: English.
+macOS menu bar app (Swift/SwiftUI + AppKit, macOS 14+, Apple Silicon) that lists devices connected to the Mac — wired, wireless and on the LAN — remembers past ones, and offers quick actions. UI language: English.
 
 **Start of a session:** read `HANDOFF.md` (if present) for current state and next steps. **End of a session:** run `/handoff`.
 
@@ -14,7 +14,7 @@ rm -rf ~/Applications/FastGlance.app && cp -R build/Build/Products/Debug/FastGla
 
 - Run from `~/Applications`, not `build/` — launch-at-login (SMAppService) registers the path.
 - `.xcodeproj` is generated and gitignored; edit `project.yml` (Info.plist keys, Bonjour types, signing).
-- Signing: manual, "Apple Development", team `GLJ8XVVSM6` (the certificate's OU, not the ID in its name).
+- Signing: ad-hoc by default, no developer account required. For a stable development identity, pass `CODE_SIGN_IDENTITY="Apple Development" DEVELOPMENT_TEAM="YOUR_TEAM_ID"` to xcodebuild. Never commit signing credentials. See `docs/RELEASING.md` for distribution.
 - Swift 5 language mode on purpose: C callbacks (IOKit, CoreAudio, Carbon) fight Swift 6 strict concurrency. Sources are `@MainActor`; callbacks hop with `MainActor.assumeIsolated` on the main run loop.
 
 ## Architecture
@@ -24,7 +24,7 @@ rm -rf ~/Applications/FastGlance.app && cp -R build/Build/Products/Debug/FastGla
 - `Sources/` — one file per source: Internet, Bluetooth (+ Gamepads), Audio, USB (+ USBDoctor), Disks, Displays, Cameras, Printers, Network.
 - `Private/` — private APIs, loaded with `dlopen`/`dlsym`, degrade to "unavailable": DisplayServices brightness, IOAVService DDC.
 - `LidGuard.swift` — unmount disks before lid-close sleep, remount on wake. `Hotkeys.swift` — Carbon hot keys ⌃⌥1–9, ⌃⌥M.
-- History: `~/Library/Application Support/FastGlance/history.json` (name, kind, last connected only).
+- History: `~/Library/Application Support/FastGlance/history.json` (device ID, system name, kind, last connected, optional nickname and hidden state).
 
 ## Rules of thumb
 
