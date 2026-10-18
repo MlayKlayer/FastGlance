@@ -71,7 +71,7 @@ enum Prefs {
     /// Slower sources freshen up when someone is about to look.
     func menuWillOpen() {
         bluetooth.refreshIfStale()
-        printers.reload()
+        printers.reloadIfStale()
         network.sweepIfDue(maxAge: 30)
         refresh()
     }
@@ -200,8 +200,8 @@ enum Prefs {
     }
 
     func setPinLabel(_ id: String, _ label: String) {
-        let label = label.trimmingCharacters(in: .whitespaces)
-        pinLabels[id] = label.isEmpty ? nil : label
+        // Stored as typed (trimming per keystroke would eat the space before the next word).
+        pinLabels[id] = label.allSatisfy(\.isWhitespace) ? nil : label
         savePins()
     }
 
