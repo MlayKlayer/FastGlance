@@ -12,13 +12,17 @@ import AVFoundation
         withExtendedLifetime(delegate) { app.run() }
     }
 
-    private let hub = DeviceHub()
+    // Hosted unit tests must not start hardware discovery, prompt for permissions,
+    // register hotkeys, or write the user's device history.
+    private let isRunningTests = NSClassFromString("XCTestCase") != nil
+    private lazy var hub = DeviceHub()
     private let selection = DetailSelection()
     private var status: StatusController!
     private var windows: [String: NSWindow] = [:]
     private lazy var lidGuard = LidGuard(disks: hub.disks)
 
     func applicationDidFinishLaunching(_ note: Notification) {
+        guard !isRunningTests else { return }
         Prefs.register()
         NSApp.mainMenu = Self.mainMenu()
         Notifier.shared.start()
@@ -58,6 +62,7 @@ import AVFoundation
     }
 
     func applicationWillTerminate(_ note: Notification) {
+        guard !isRunningTests else { return }
         hub.saveHistory()
     }
 

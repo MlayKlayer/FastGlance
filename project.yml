@@ -6,9 +6,11 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    DEVELOPMENT_TEAM: GLJ8XVVSM6
     CODE_SIGN_STYLE: Manual
-    CODE_SIGN_IDENTITY: Apple Development
+    # Ad-hoc signing lets contributors build without an Apple Developer account.
+    # Override CODE_SIGN_IDENTITY and DEVELOPMENT_TEAM for a development/release certificate.
+    CODE_SIGN_IDENTITY: "-"
+    ARCHS: arm64
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
 targets:
