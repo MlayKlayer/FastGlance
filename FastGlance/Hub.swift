@@ -11,12 +11,13 @@ enum Prefs {
     static let pins = "pins"                    // [String] of DeviceAction ids
     static let networkScan = "networkScan"
     static let networkScanInterval = "networkScanInterval"  // seconds
+    static let hotkeys = "hotkeys"
 
     static func register() {
         UserDefaults.standard.register(defaults: [
             iconMode: "lowest", notifyConnections: true, notifyBattery: true, batteryThreshold: 20,
             mutedKinds: "computer,media,network,phone,router,smartHome,watch", hiddenKinds: "",
-            networkScan: true, networkScanInterval: 60.0,
+            networkScan: true, networkScanInterval: 60.0, hotkeys: true,
         ])
     }
 
@@ -40,6 +41,7 @@ enum Prefs {
     let disks = DiskSource()
     let bluetooth: BluetoothSource
     let network = NetworkSource()
+    let cameras = CameraSource()
     private let sources: [DeviceSource]
     private var history = DeviceHistory.load()
     private var refreshQueued = false
@@ -51,7 +53,7 @@ enum Prefs {
         let printers = PrinterSource(usb: usb, network: network)
         usb.claimedSerials = { [weak printers] in printers?.usbSerials ?? [] }
         network.claimedServiceNames = { [weak printers] in printers?.dnssdNames ?? [] }
-        sources = [bluetooth, audio, usb, disks, DisplaySource(), printers, network]
+        sources = [bluetooth, audio, usb, disks, DisplaySource(), cameras, printers, network]
     }
 
     func start() {

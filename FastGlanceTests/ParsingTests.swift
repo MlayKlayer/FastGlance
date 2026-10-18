@@ -53,3 +53,15 @@ final class ParsingTests: XCTestCase {
         XCTAssertNil(PrinterSource.dnssdName("ipp://10.0.0.5/ipp"))
     }
 }
+
+final class DDCTests: XCTestCase {
+    func testReplyAndChecksum() {
+        // Brightness 50 of 100.
+        let reply: [UInt8] = [0x6E, 0x88, 0x02, 0x00, 0x10, 0x00, 0x00, 0x64, 0x00, 0x32, 0x00]
+        let v = DDC.parseReply(reply, code: 0x10)
+        XCTAssertEqual(v?.current, 50)
+        XCTAssertEqual(v?.max, 100)
+        XCTAssertNil(DDC.parseReply(reply, code: 0x12))  // answer for another VCP code
+        XCTAssertEqual(DDC.checksum([0x84, 0x03, 0x10, 0x00, 0x32]), 0x6E ^ 0x51 ^ 0x84 ^ 0x03 ^ 0x10 ^ 0x32)
+    }
+}

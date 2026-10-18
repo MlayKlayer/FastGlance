@@ -26,6 +26,7 @@ import AppKit
             // system_profiler is not free; only poll while something can report a battery.
             if self?.devices.contains(where: \.isConnected) == true { self?.refreshProfiler() }
         } })
+        Gamepads.start { [weak self] in self?.reload() }
         reload()
         refreshProfiler()
     }
@@ -50,6 +51,9 @@ import AppKit
             if !connected { dev.lastConnected = d.recentAccessDate() }
             if connected {
                 dev.batteries = batteries[addr] ?? []
+                if dev.batteries.isEmpty, dev.kind == .gamepad, let pad = Gamepads.controller(named: dev.name) {
+                    dev.batteries = Gamepads.battery(pad)  // system_profiler doesn't report DualSense/Xbox battery
+                }
                 let isOutput = audio.outputs(forBluetoothAddress: addr).contains { $0.id == audio.defaultOutput }
                 dev.status = isOutput ? "Connected · Playing here" : "Connected"
             }
@@ -134,6 +138,9 @@ import AppKit
             if let a = audio.outputs(forBluetoothAddress: addr).first {
                 out += audio.actions(for: a, device: device)
             }
+            if device.kind == .gamepad, let pad = Gamepads.controller(named: device.name) {
+                out.append(DeviceAction(device, "vibrate", "Test Vibration", "waveform") { Gamepads.vibrate(pad) })
+            }
             out.append(DeviceAction(device, "disconnect", "Disconnect", "xmark.circle") { [weak self] in
                 IOBluetoothDevice(addressString: addr)?.closeConnection()
                 self?.reload()
@@ -154,6 +161,9 @@ import AppKit
     }
 
     func controls(for device: Device) -> [DeviceControl] {
+        if device.isConnected, device.kind == .gamepad, let pad = Gamepads.controller(named: device.name) {
+            return Gamepads.controls(pad, deviceID: device.id)
+        }
         guard device.isConnected, let a = audio.outputs(forBluetoothAddress: address(device)).first else { return [] }
         return audio.controls(for: a)
     }
