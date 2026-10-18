@@ -153,7 +153,13 @@ struct DeviceCard: View {
                     }
                 }
 
-                if !device.isConnected {
+                if !device.isConnected && hub.isKnownToSystem(device) {
+                    Text(device.kind == .printer
+                         ? "To remove this printer, delete it in Printers & Scanners."
+                         : "macOS still has this device paired. To remove it, unpair it in Bluetooth Settings.")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                } else if !device.isConnected {
                     HStack {
                         Spacer()
                         Button("Forget Device…", role: .destructive) { confirmForget = true }

@@ -66,6 +66,7 @@ enum CA {
     private(set) var all: [AudioDev] = []
     private(set) var defaultOutput: AudioObjectID = 0
     private(set) var defaultInput: AudioObjectID = 0
+    private var observedInputs: Set<AudioObjectID> = []
 
     func start() {
         for sel in [kAudioHardwarePropertyDevices, kAudioHardwarePropertyDefaultOutputDevice, kAudioHardwarePropertyDefaultInputDevice] {
@@ -90,6 +91,15 @@ enum CA {
                 transport: CA.get(id, kAudioDevicePropertyTransportType, kAudioObjectPropertyScopeGlobal, UInt32(0)) ?? 0,
                 hasOutput: !CA.array(id, kAudioDevicePropertyStreams, kAudioObjectPropertyScopeOutput, zero: AudioStreamID(0)).isEmpty,
                 hasInput: !CA.array(id, kAudioDevicePropertyStreams, kAudioObjectPropertyScopeInput, zero: AudioStreamID(0)).isEmpty)
+        }
+        // Mute or input level changed by another app or the device itself: keep the mic indicator honest.
+        for a in all where a.hasInput && observedInputs.insert(a.id).inserted {
+            for sel in [kAudioDevicePropertyMute, kAudioDevicePropertyVolumeScalar, kAudioHardwareServiceDeviceProperty_VirtualMainVolume] {
+                var addr = CA.addr(sel, kAudioObjectPropertyScopeInput)
+                AudioObjectAddPropertyListenerBlock(a.id, &addr, .main) { [weak self] _, _ in
+                    MainActor.assumeIsolated { self?.reload() }
+                }
+            }
         }
         // Bluetooth audio is shown on the Bluetooth device itself.
         let next = all.filter { !Self.isBluetooth($0) }.map(device)
@@ -131,24 +141,31 @@ enum CA {
 
     /// Shared with Bluetooth rows, which own their audio devices.
     func actions(for a: AudioDev, device: Device) -> [DeviceAction] {
+        // Already-active choices stay listed (last, with a checkmark) so a pin to them never goes missing.
         var out: [DeviceAction] = []
-        if a.hasOutput && a.id != defaultOutput {
-            out.append(DeviceAction(device, "output", "Use for Output", "speaker.wave.2") { [weak self] in self?.setDefault(output: a.id) })
+        var active: [DeviceAction] = []
+        func add(_ key: String, _ title: String, _ symbol: String, isActive: Bool, _ run: @escaping () -> Void) {
+            if isActive { active.append(DeviceAction(device, key, title, "checkmark.circle", run: run)) }
+            else { out.append(DeviceAction(device, key, title, symbol, run: run)) }
         }
-        if a.hasInput && a.id != defaultInput {
-            out.append(DeviceAction(device, "input", "Use for Input", "mic") { [weak self] in self?.setDefault(input: a.id) })
+        let isOutput = a.id == defaultOutput, isInput = a.id == defaultInput
+        if a.hasOutput {
+            add("output", "Use for Output", "speaker.wave.2", isActive: isOutput) { [weak self] in self?.setDefault(output: a.id) }
         }
-        if a.hasOutput && a.hasInput && (a.id != defaultOutput || a.id != defaultInput) {
-            out.append(DeviceAction(device, "both", "Use for Input & Output", "arrow.left.arrow.right") { [weak self] in
+        if a.hasInput {
+            add("input", "Use for Input", "mic", isActive: isInput) { [weak self] in self?.setDefault(input: a.id) }
+        }
+        if a.hasOutput && a.hasInput {
+            add("both", "Use for Input & Output", "arrow.left.arrow.right", isActive: isOutput && isInput) { [weak self] in
                 self?.setDefault(output: a.id); self?.setDefault(input: a.id)
-            })
+            }
         }
         if a.hasOutput, let muted = mute(a.id, kAudioObjectPropertyScopeOutput) {
             out.append(DeviceAction(device, "mute", muted ? "Unmute" : "Mute", muted ? "speaker.wave.2" : "speaker.slash") { [weak self] in
                 self?.setMute(a.id, kAudioObjectPropertyScopeOutput, !muted)
             })
         }
-        return out
+        return out + active
     }
 
     func controls(for device: Device) -> [DeviceControl] {
@@ -217,7 +234,8 @@ enum CA {
 
     // MARK: - Global microphone mute
 
-    private let savedMicVolumeKey = "savedMicVolume"
+    private let savedMicVolumesKey = "savedMicVolumes"  // device UID -> input level before muting
+    private let mutedMicsKey = "mutedMics"              // UIDs whose mute switch we turned on
 
     var isMicMuted: Bool {
         guard defaultInput != 0 else { return false }
@@ -225,23 +243,44 @@ enum CA {
         return volume(defaultInput, kAudioObjectPropertyScopeInput) == 0
     }
 
+    /// Mutes every real microphone, not just the default one, so an app recording from another mic is silenced too.
+    /// Unmuting restores only what was muted here (plus the default mic), so a mic the user muted stays muted.
+    /// a mic plugged in while muted starts unmuted; toggle twice to catch it.
     func toggleMic() {
-        let id = defaultInput
-        guard id != 0 else { return }
-        let muting = !isMicMuted
-        if mute(id, kAudioObjectPropertyScopeInput) != nil {
-            setMute(id, kAudioObjectPropertyScopeInput, muting)
-            return
-        }
-        // No mute switch on this device: drop the input level to zero and restore it later.
-        if muting {
-            UserDefaults.standard.set(volume(id, kAudioObjectPropertyScopeInput) ?? 0.75, forKey: savedMicVolumeKey)
-            setVolume(id, kAudioObjectPropertyScopeInput, 0)
+        guard defaultInput != 0 else { return }
+        let scope = kAudioObjectPropertyScopeInput
+        let d = UserDefaults.standard
+        var flipped = Set(d.stringArray(forKey: mutedMicsKey) ?? [])
+        var levels = d.dictionary(forKey: savedMicVolumesKey) as? [String: Double] ?? [:]
+        if !isMicMuted {
+            // Virtual inputs (BlackHole, Zoom/Teams audio) are left alone so screen-recording audio keeps working.
+            for a in all where a.hasInput && (a.id == defaultInput || !Self.isVirtual(a)) {
+                if let muted = mute(a.id, scope) {
+                    if !muted { CA.set(a.id, kAudioDevicePropertyMute, scope, UInt32(1)); flipped.insert(a.uid) }
+                } else if canSetVolume(a.id, scope), let level = volume(a.id, scope), level > 0 {
+                    // No mute switch on this device: drop the input level to zero and restore it later.
+                    levels[a.uid] = Double(level)
+                    setVolume(a.id, scope, 0)
+                }
+            }
         } else {
-            let saved = UserDefaults.standard.object(forKey: savedMicVolumeKey) as? Float ?? 0.75
-            setVolume(id, kAudioObjectPropertyScopeInput, saved > 0 ? saved : 0.75)
+            for a in all where a.hasInput && (a.id == defaultInput || flipped.contains(a.uid) || levels[a.uid] != nil) {
+                if mute(a.id, scope) != nil {
+                    CA.set(a.id, kAudioDevicePropertyMute, scope, UInt32(0))
+                } else if volume(a.id, scope) == 0 {
+                    setVolume(a.id, scope, Float32(levels[a.uid] ?? 0.75))
+                }
+            }
+            flipped = []
+            levels = [:]
         }
+        d.set(Array(flipped), forKey: mutedMicsKey)
+        d.set(levels, forKey: savedMicVolumesKey)
         reload()
+    }
+
+    static func isVirtual(_ d: AudioDev) -> Bool {
+        d.transport == kAudioDeviceTransportTypeVirtual || d.transport == kAudioDeviceTransportTypeAggregate
     }
 
     static func transportName(_ t: UInt32) -> String {

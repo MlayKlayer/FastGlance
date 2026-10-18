@@ -42,9 +42,12 @@ import CoreGraphics
         }, uniquingKeysWith: { a, _ in a })
         var next: [Device] = []
         var nextIDs: [String: CGDirectDisplayID] = [:]
-        for d in Self.online() {
+        for d in Self.online().sorted(by: { CGDisplayUnitNumber($0) < CGDisplayUnitNumber($1) }) {
             let builtin = CGDisplayIsBuiltin(d) != 0
-            let id = builtin ? "display:builtin" : "display:\(CGDisplayVendorNumber(d)):\(CGDisplayModelNumber(d)):\(CGDisplaySerialNumber(d))"
+            var id = builtin ? "display:builtin" : "display:\(CGDisplayVendorNumber(d)):\(CGDisplayModelNumber(d)):\(CGDisplaySerialNumber(d))"
+            // Identical monitors without a serial number would collide; the later one also gets its unit number.
+            // unit numbers follow the port, so swapping cables swaps the two monitors' pins and offsets.
+            if nextIDs[id] != nil { id += ":\(CGDisplayUnitNumber(d))" }
             nextIDs[id] = d
             let mode = CGDisplayCopyDisplayMode(d)
             let res = mode.map { "\($0.width) × \($0.height)" } ?? "—"
@@ -147,27 +150,31 @@ import CoreGraphics
 
     func actions(for device: Device) -> [DeviceAction] {
         guard let d = ids[device.id] else { return [] }
+        // Already-active choices stay listed (last, with a checkmark) so a pin to them never goes missing.
         var out: [DeviceAction] = []
-        if CGDisplayIsMain(d) == 0 {
-            out.append(DeviceAction(device, "main", "Make Main Display", "menubar.rectangle") { [weak self] in self?.makeMain(d) })
-        }
+        var active: [DeviceAction] = []
         if ids.count > 1 {
+            let isMain = CGDisplayIsMain(d) != 0
+            let main = DeviceAction(device, "main", "Make Main Display", isMain ? "checkmark.circle" : "menubar.rectangle") { [weak self] in self?.makeMain(d) }
+            if isMain { active.append(main) } else { out.append(main) }
             let mirrored = CGDisplayMirrorsDisplay(d) != kCGNullDirectDisplay
             out.append(DeviceAction(device, "mirror", mirrored ? "Stop Mirroring" : "Mirror Main Display", "rectangle.on.rectangle") { [weak self] in
                 self?.setMirror(d, on: !mirrored)
             })
         }
-        if currentInput(d) != nil {  // a successful read, not just an AV service: DDC really works
-            for input in DDC.inputs where input.code != currentInput(d) {
-                out.append(DeviceAction(device, "input\(input.code)", "Switch to \(input.name)", "arrow.left.arrow.right.square") { [weak self] in
+        if let current = currentInput(d) {  // a successful read, not just an AV service: DDC really works
+            for input in DDC.inputs {
+                let isCurrent = input.code == current
+                let a = DeviceAction(device, "input\(input.code)", "Switch to \(input.name)", isCurrent ? "checkmark.circle" : "arrow.left.arrow.right.square") { [weak self] in
                     self?.ddcSet(d, DDC.input, input.code)
-                })
+                }
+                if isCurrent { active.append(a) } else { out.append(a) }
             }
         }
         out.append(DeviceAction(device, "settings", "Displays Settings…", "gearshape") {
             Util.open("x-apple.systempreferences:com.apple.Displays-Settings.extension")
         })
-        return out
+        return out + active
     }
 
     func controls(for device: Device) -> [DeviceControl] {
