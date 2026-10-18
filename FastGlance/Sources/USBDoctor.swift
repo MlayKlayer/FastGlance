@@ -56,8 +56,15 @@ enum USBDoctor {
         return cf?.takeRetainedValue() as? [String: Any] ?? [:]
     }
 
+    /// Normalised to 0 low, 1 full, 2 high, 3 super (5G), 4 super+ (10G), 5 super+ ×2 (20G).
     static func speed(_ p: [String: Any]) -> Int? {
-        p["USBSpeed"] as? Int ?? p["Device Speed"] as? Int
+        // "USBSpeed" uses the XHCI numbering (IOUSBHostFamilyDefinitions.h: 1 full, 2 low, 3 high, 4 super, 5 super+, 6 ×2).
+        if let xhci = p["USBSpeed"] as? Int { return normalize(xhci: xhci) }
+        return p["Device Speed"] as? Int  // legacy key already uses the normalised numbering
+    }
+
+    static func normalize(xhci: Int) -> Int? {
+        [1: 1, 2: 0, 3: 2, 4: 3, 5: 4, 6: 5][xhci]
     }
 
     private static func name(_ p: [String: Any]) -> String {

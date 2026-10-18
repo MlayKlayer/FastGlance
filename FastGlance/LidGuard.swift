@@ -14,9 +14,7 @@ import IOKit.pwr_mgt
     private var rootPort: io_connect_t = 0
     private var notifyPort: IONotificationPortRef?
     private var notifier: io_object_t = 0
-    /// BSD names we unmounted, to mount back if still plugged in.
-    private var unmounted: [String] = []
-    private var failures: [String] = []
+    private var ledger = SleepLedger()
     private var pendingDone: (() -> Void)?
     private var generation = 0
 
@@ -68,22 +66,19 @@ import IOKit.pwr_mgt
 
     private func unmountAll(then done: @escaping () -> Void) {
         let targets = disks.localVolumes
-        unmounted = []
-        failures = []
         guard !targets.isEmpty else { return done() }
 
         let group = DispatchGroup()
         generation += 1
         let gen = generation
         pendingDone = done
-        for (url, name) in targets {
+        for (url, name, uuid) in targets {
             group.enter()
-            let bsd = USBDoctor.bsdName(forVolume: url)
-            // Plain unmount, never forced: an open file means the disk stays mounted and we say so on wake.
-            FileManager.default.unmountVolume(at: url, options: []) { error in
+            // Plain unmount, never forced and never with a system dialog: a busy disk stays mounted and we say so on wake.
+            FileManager.default.unmountVolume(at: url, options: [.withoutUI]) { error in
                 DispatchQueue.main.async {
-                    if let error { self.failures.append("\(name): \(error.localizedDescription)") }
-                    else if let bsd { self.unmounted.append(bsd) }
+                    if let error { self.ledger.failed("\(name): \(error.localizedDescription)") }
+                    else if let uuid { self.ledger.unmounted(uuid) }
                     group.leave()
                 }
             }
@@ -101,18 +96,30 @@ import IOKit.pwr_mgt
     }
 
     private func reportFailures() {
+        let failures = ledger.takeFailures()
         guard !failures.isEmpty else { return }
         Notifier.shared.post("Some disks stayed mounted during sleep", failures.joined(separator: "\n"))
-        failures = []
     }
 
     private func remount() {
-        let names = unmounted
-        unmounted = []
-        guard !names.isEmpty else { return }
-        // Give USB a moment to come back after wake; disks that were unplugged just fail quietly.
+        let uuids = ledger.takeRemounts()
+        guard !uuids.isEmpty else { return }
+        // By volume UUID: BSD names like disk4s1 can change when USB re-enumerates after wake.
+        // Give USB a moment to come back; disks that were unplugged just fail quietly.
         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 3) {
-            for bsd in names { _ = Util.output("/usr/sbin/diskutil", ["mount", bsd]) }
+            for uuid in uuids { _ = Util.output("/usr/sbin/diskutil", ["mount", uuid]) }
         }
     }
+}
+
+/// What happened to disks across sleep. Cleared only on full wake, so a dark wake (Power Nap)
+/// followed by another sleep message can't forget disks that still need mounting.
+struct SleepLedger {
+    private(set) var toRemount: [String] = []
+    private(set) var failures: [String] = []
+
+    mutating func unmounted(_ uuid: String) { if !toRemount.contains(uuid) { toRemount.append(uuid) } }
+    mutating func failed(_ message: String) { failures.append(message) }
+    mutating func takeRemounts() -> [String] { defer { toRemount = [] }; return toRemount }
+    mutating func takeFailures() -> [String] { defer { failures = [] }; return failures }
 }

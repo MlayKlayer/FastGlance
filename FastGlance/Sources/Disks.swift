@@ -76,8 +76,12 @@ import AppKit
     var hasEjectable: Bool { !urls.isEmpty }
 
     /// Mounted external volumes on this Mac (not network shares), for unmounting before sleep.
-    var localVolumes: [(url: URL, name: String)] {
-        devices.compactMap { d in localIDs.contains(d.id) ? urls[d.id].map { ($0, d.name) } : nil }
+    var localVolumes: [(url: URL, name: String, uuid: String?)] {
+        devices.compactMap { d in
+            guard localIDs.contains(d.id), let url = urls[d.id] else { return nil }
+            let uuid = d.raw.first { $0.key == "UUID" }?.value
+            return (url, d.name, uuid == "—" ? nil : uuid)
+        }
     }
 
     func ejectAll() {
