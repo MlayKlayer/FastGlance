@@ -1,0 +1,51 @@
+name: FastGlance
+options:
+  bundleIdPrefix: com.mlayklayer
+  deploymentTarget:
+    macOS: "14.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    DEVELOPMENT_TEAM: GLJ8XVVSM6
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: Apple Development
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  FastGlance:
+    type: application
+    platform: macOS
+    sources: [FastGlance]
+    info:
+      path: FastGlance/Info.plist
+      properties:
+        CFBundleDisplayName: FastGlance
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSUIElement: true
+        LSApplicationCategoryType: public.app-category.utilities
+        NSBluetoothAlwaysUsageDescription: FastGlance lists your Bluetooth devices and lets you connect, disconnect and see their battery.
+        NSCameraUsageDescription: FastGlance shows a camera preview when you ask for it.
+        NSLocalNetworkUsageDescription: FastGlance discovers devices on your local network.
+        NSBonjourServices: [_airplay._tcp, _raop._tcp, _ipp._tcp, _ipps._tcp, _printer._tcp, _smb._tcp, _afpovertcp._tcp, _googlecast._tcp, _hap._tcp, _ssh._tcp, _http._tcp, _companion-link._tcp]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mlayklayer.FastGlance
+        ENABLE_APP_SANDBOX: NO
+        ENABLE_HARDENED_RUNTIME: NO
+  FastGlanceTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [FastGlanceTests]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: FastGlance
+schemes:
+  FastGlance:
+    build:
+      targets:
+        FastGlance: all
+    test:
+      targets: [FastGlanceTests]
