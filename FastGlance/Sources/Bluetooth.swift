@@ -176,9 +176,22 @@ import AppKit
         guard let d = IOBluetoothDevice(addressString: addr) else { return }
         if d.isConnected() {
             connectionComplete(d, status: kIOReturnSuccess)
-        } else if d.openConnection(self) != kIOReturnSuccess {
-            playHerePending.remove(addr)
-            Notifier.shared.post("Couldn't connect", d.name ?? addr)
+        } else if d.openConnection(self) == kIOReturnSuccess {
+            report(addr, d.name, "Connecting…")
+        } else {
+            connectFailed(addr, d.name)
+        }
+    }
+
+    private func report(_ addr: String, _ name: String?, _ text: String, failed: Bool = false, retry: (() -> Void)? = nil) {
+        Notifier.shared.report("bt:\(addr)", name ?? addr.uppercased(), text, failed: failed, retry: retry)
+    }
+
+    private func connectFailed(_ addr: String, _ name: String?) {
+        let playHere = playHerePending.remove(addr) != nil
+        report(addr, name, "Couldn't connect", failed: true) { [weak self] in
+            if playHere { self?.playHerePending.insert(addr) }
+            self?.connect(addr)
         }
     }
 
@@ -186,23 +199,24 @@ import AppKit
     @objc func connectionComplete(_ device: IOBluetoothDevice, status: IOReturn) {
         guard let addr = device.addressString?.lowercased() else { return }
         reload()
-        guard status == kIOReturnSuccess else {
-            playHerePending.remove(addr)
-            Notifier.shared.post("Couldn't connect", device.name ?? addr)
-            return
-        }
-        if playHerePending.contains(addr) { routeAudio(addr, tries: 20) }
+        guard status == kIOReturnSuccess else { return connectFailed(addr, device.name) }
+        if playHerePending.contains(addr) { routeAudio(addr, name: device.name, tries: 20) } else { report(addr, device.name, "Connected") }
     }
 
     /// The CoreAudio device appears a moment after the Bluetooth link.
-    private func routeAudio(_ addr: String, tries: Int) {
+    private func routeAudio(_ addr: String, name: String?, tries: Int) {
         if let out = audio.outputs(forBluetoothAddress: addr).first {
             playHerePending.remove(addr)
             audio.setDefault(output: out.id)
+            report(addr, name, "Playing here")
         } else if tries > 0 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.routeAudio(addr, tries: tries - 1) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.routeAudio(addr, name: name, tries: tries - 1) }
         } else {
             playHerePending.remove(addr)
+            report(addr, name, "Connected, but audio didn't switch", failed: true) { [weak self] in
+                self?.playHerePending.insert(addr)
+                self?.connect(addr)
+            }
         }
     }
 }

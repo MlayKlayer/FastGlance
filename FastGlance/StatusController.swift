@@ -23,6 +23,7 @@ import SwiftUI
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
             button.imagePosition = .imageLeading
         }
+        Notifier.shared.isMenuOpen = { [weak self] in self?.popover.isShown == true }
         render()
         // Icon settings take effect immediately.
         NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
