@@ -56,8 +56,8 @@ struct ActionStatus {
 
         if Date() > quietUntil, d.bool(forKey: Prefs.notifyConnections) {
             let before = events.count
-            events += new.filter { $0.isConnected && !wasConnected.contains($0.id) && !muted.contains($0.kind) }.map { ($0, true) }
-            events += old.filter { $0.isConnected && !isConnected.contains($0.id) && !muted.contains($0.kind) }.map { ($0, false) }
+            events += new.filter { $0.isConnected && !$0.isHidden && !wasConnected.contains($0.id) && !muted.contains($0.kind) }.map { ($0, true) }
+            events += old.filter { $0.isConnected && !$0.isHidden && !isConnected.contains($0.id) && !muted.contains($0.kind) }.map { ($0, false) }
             // A dock brings many devices at once: collect for a moment, then say it in one notification.
             if before == 0 && !events.isEmpty {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
@@ -74,7 +74,7 @@ struct ActionStatus {
         }
 
         let threshold = d.integer(forKey: Prefs.batteryThreshold)
-        for dev in new where dev.isConnected {
+        for dev in new where dev.isConnected && !dev.isHidden {
             guard let low = dev.lowestBattery else { continue }
             if low <= threshold, !lowWarned.contains(dev.id) {
                 lowWarned.insert(dev.id)

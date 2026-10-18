@@ -9,6 +9,8 @@ enum Prefs {
     static let hiddenKinds = "hiddenKinds"      // comma-separated DeviceKind raw values
     static let mutedKinds = "notifyMutedKinds"
     static let pins = "pins"                    // [String] of DeviceAction ids
+    static let pinLabels = "pinLabels"          // [pin id: the user's own title]
+    static let pinTitles = "pinTitles"          // [pin id: action title when pinned], shown while it can't run
     static let networkScan = "networkScan"
     static let networkScanInterval = "networkScanInterval"  // seconds
     static let hotkeys = "hotkeys"
@@ -32,6 +34,8 @@ enum Prefs {
 @MainActor final class DeviceHub: ObservableObject {
     @Published private(set) var devices: [Device] = []
     @Published private(set) var pins: [String] = UserDefaults.standard.stringArray(forKey: Prefs.pins) ?? []
+    @Published private(set) var pinLabels = UserDefaults.standard.dictionary(forKey: Prefs.pinLabels) as? [String: String] ?? [:]
+    private var pinTitles = UserDefaults.standard.dictionary(forKey: Prefs.pinTitles) as? [String: String] ?? [:]
     /// Bumped on every refresh so views re-read action titles and mic state.
     @Published private(set) var revision = 0
 
@@ -86,6 +90,14 @@ enum Prefs {
         all += history.entries.values.filter { !liveIDs.contains($0.id) }.map {
             Device(id: $0.id, name: $0.name, kind: $0.kind, isConnected: false, lastConnected: $0.lastConnected)
         }
+        for i in all.indices {
+            guard let e = history.entries[all[i].id] else { continue }
+            if let nick = e.nickname {
+                all[i].info.insert(InfoRow("System name", all[i].name), at: 0)
+                all[i].name = nick
+            }
+            all[i].isHidden = e.hidden ?? false
+        }
         all.sort { ($0.kind.order, $0.name.localizedLowercase) < ($1.kind.order, $1.name.localizedLowercase) }
 
         let old = devices
@@ -127,8 +139,23 @@ enum Prefs {
     func forget(_ d: Device) {
         history.entries[d.id] = nil
         history.save()
-        pins.removeAll { $0.hasPrefix(d.id + "|") }
-        savePins()
+        pins.filter { $0.hasPrefix(d.id + "|") }.forEach(removePin)
+        refresh()
+    }
+
+    /// An empty name, or the system's own, goes back to the system name.
+    func rename(_ d: Device, to name: String) {
+        guard history.entries[d.id] != nil else { return }
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        history.entries[d.id]?.nickname = name.isEmpty || name == history.entries[d.id]?.name ? nil : name
+        history.save()
+        refresh()
+    }
+
+    func setHidden(_ d: Device, _ hidden: Bool) {
+        guard history.entries[d.id] != nil else { return }
+        history.entries[d.id]?.hidden = hidden ? true : nil
+        history.save()
         refresh()
     }
 
@@ -143,16 +170,65 @@ enum Prefs {
     func isPinned(_ a: DeviceAction) -> Bool { pins.contains(a.id) }
 
     func togglePin(_ a: DeviceAction) {
-        if let i = pins.firstIndex(of: a.id) { pins.remove(at: i) } else { pins.append(a.id) }
+        if pins.contains(a.id) { return removePin(a.id) }
+        pins.append(a.id)
+        pinTitles[a.id] = a.title
         savePins()
     }
 
-    private func savePins() { UserDefaults.standard.set(pins, forKey: Prefs.pins) }
+    func removePin(_ id: String) {
+        pins.removeAll { $0 == id }
+        pinLabels[id] = nil
+        pinTitles[id] = nil
+        savePins()
+    }
 
-    /// Pins that can run right now. `slot` is the pin's position in `pins`, which is what ⌃⌥N and option-click use,
-    /// so a pin that can't run at the moment never shifts the others onto the wrong shortcut.
-    var pinnedActions: [(slot: Int, device: Device, action: DeviceAction)] {
-        pins.indices.compactMap { slot in pinnedAction(slot: slot).map { (slot, $0.device, $0.action) } }
+    /// Reordering also moves the ⌃⌥N shortcuts, which follow the order.
+    func movePins(from: IndexSet, to: Int) {
+        pins.move(fromOffsets: from, toOffset: to)
+        savePins()
+    }
+
+    func setPinLabel(_ id: String, _ label: String) {
+        let label = label.trimmingCharacters(in: .whitespaces)
+        pinLabels[id] = label.isEmpty ? nil : label
+        savePins()
+    }
+
+    private func savePins() {
+        let d = UserDefaults.standard
+        d.set(pins, forKey: Prefs.pins)
+        d.set(pinLabels, forKey: Prefs.pinLabels)
+        d.set(pinTitles, forKey: Prefs.pinTitles)
+    }
+
+    struct Pin: Identifiable {
+        let id: String
+        /// Position in `pins`, which is what ⌃⌥N and option-click use, so a pin that can't run never shifts the others.
+        let slot: Int
+        let label: String?
+        let defaultTitle: String
+        let device: Device?
+        /// nil while it can't run.
+        let action: DeviceAction?
+
+        var title: String { label ?? defaultTitle }
+        var symbol: String { action?.symbol ?? "pin.slash" }
+        var subtitle: String {
+            guard action == nil else { return device?.name ?? "" }
+            guard let device else { return "Device not found" }
+            return "\(device.name) · \(device.isConnected ? "not available now" : "offline")"
+        }
+    }
+
+    /// Every pin, including the ones that can't run right now.
+    var pinList: [Pin] {
+        pins.enumerated().map { slot, id in
+            let device = devices.first { $0.id == id.split(separator: "|").first.map(String.init) }
+            let action = device.flatMap { d in actions(for: d).first { $0.id == id } }
+            return Pin(id: id, slot: slot, label: pinLabels[id], defaultTitle: action?.title ?? pinTitles[id] ?? "Action",
+                       device: device, action: action)
+        }
     }
 
     func pinnedAction(slot: Int) -> (device: Device, action: DeviceAction)? {

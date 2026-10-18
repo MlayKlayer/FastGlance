@@ -14,7 +14,7 @@ struct MenuView: View {
 
     private var shown: [Device] {
         let hidden = Set(hiddenRaw.split(separator: ",").map(String.init))
-        return hub.devices.filter { !hidden.contains($0.kind.rawValue) }
+        return hub.devices.filter { !$0.isHidden && !hidden.contains($0.kind.rawValue) }
     }
 
     private var visible: [Device] {
@@ -79,12 +79,13 @@ struct MenuView: View {
 
     @ViewBuilder private var content: some View {
         VStack(alignment: .leading, spacing: 8) {
-            let pinned = hub.pinnedActions
+            let pinned = hub.pinList
             if !pinned.isEmpty && query.isEmpty {
                 SectionTitle("Pinned")
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 6)], spacing: 6) {
-                    ForEach(pinned, id: \.action.id) { item in
-                        PinChip(device: item.device, action: item.action, shortcut: hotkeys && item.slot < 9 ? "⌃⌥\(item.slot + 1)" : nil)
+                    ForEach(pinned) { p in
+                        PinChip(title: p.title, subtitle: p.subtitle, symbol: p.symbol, run: p.action?.run,
+                                shortcut: hotkeys && p.slot < 9 ? "⌃⌥\(p.slot + 1)" : nil)
                     }
                 }
             }
@@ -93,7 +94,8 @@ struct MenuView: View {
             if !found.isEmpty {
                 SectionTitle("Actions")
                 ForEach(Array(found.enumerated()), id: \.element.action.id) { i, item in
-                    PinChip(device: item.device, action: item.action, shortcut: i == selected ? "↩" : nil, highlighted: i == selected)
+                    PinChip(title: item.action.title, subtitle: item.device.name, symbol: item.action.symbol, run: item.action.run,
+                            shortcut: i == selected ? "↩" : nil, highlighted: i == selected)
                 }
             }
 
@@ -186,17 +188,20 @@ struct IconButton: View {
 }
 
 struct PinChip: View {
-    let device: Device
-    let action: DeviceAction
+    let title: String
+    let subtitle: String
+    let symbol: String
+    /// nil: shown dimmed, can't run right now.
+    let run: (() -> Void)?
     var shortcut: String? = nil
     var highlighted = false
     var body: some View {
-        Button(action: action.run) {
+        Button { run?() } label: {
             HStack(spacing: 6) {
-                Image(systemName: action.symbol).frame(width: 16)
+                Image(systemName: symbol).frame(width: 16)
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(action.title).font(.caption.weight(.medium)).lineLimit(1)
-                    Text(device.name).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                    Text(title).font(.caption.weight(.medium)).lineLimit(1)
+                    Text(subtitle).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 0)
                 if let shortcut { Text(shortcut).font(.caption2.monospaced()).foregroundStyle(.tertiary) }
@@ -207,6 +212,9 @@ struct PinChip: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(run == nil)
+        .opacity(run == nil ? 0.5 : 1)
+        .help(subtitle)
     }
 }
 
@@ -305,6 +313,8 @@ struct ActionMenu: View {
                     }
                 }
             }
+            Button("Rename…") { openDetail(device.id) }
+            Button("Hide from Menu") { hub.setHidden(device, true) }
             Button("Copy Name") { Util.copy(device.name) }
             Divider()
             Button("Details…") { openDetail(device.id) }

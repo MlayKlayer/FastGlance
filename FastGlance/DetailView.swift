@@ -7,12 +7,12 @@ final class DetailSelection: ObservableObject {
 struct DetailView: View {
     @EnvironmentObject var hub: DeviceHub
     @EnvironmentObject var selection: DetailSelection
-    @State private var filter = 0  // 0 all, 1 connected, 2 offline
+    @State private var filter = 0  // 0 all, 1 connected, 2 offline, 3 hidden
     @State private var query = ""
 
     private var listed: [Device] {
         hub.devices.filter {
-            (filter == 0 || (filter == 1) == $0.isConnected) && (query.isEmpty || $0.name.localizedCaseInsensitiveContains(query))
+            (filter == 3 ? $0.isHidden : filter == 0 || (filter == 1) == $0.isConnected) && Search.matches($0, Search.words(query))
         }
     }
 
@@ -41,6 +41,7 @@ struct DetailView: View {
                     Text("All").tag(0)
                     Text("Connected").tag(1)
                     Text("Offline").tag(2)
+                    Text("Hidden").tag(3)
                 }
                 .pickerStyle(.segmented).labelsHidden().padding(.horizontal, 10).padding(.top, 4)
             }
@@ -61,6 +62,7 @@ struct DeviceCard: View {
     let device: Device
     @AppStorage(Prefs.batteryThreshold) private var threshold = 20
     @State private var confirmForget = false
+    @State private var name = ""
 
     var body: some View {
         let actions = hub.actions(for: device)
@@ -184,7 +186,12 @@ struct DeviceCard: View {
                 .foregroundStyle(device.isConnected ? Color.accentColor : .secondary)
                 .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 14))
             VStack(alignment: .leading, spacing: 4) {
-                Text(device.name).font(.title2.bold()).textSelection(.enabled)
+                TextField("Name", text: $name)
+                    .font(.title2.bold()).textFieldStyle(.plain)
+                    .onSubmit { hub.rename(device, to: name) }
+                    .onAppear { name = device.name }
+                    .onChange(of: device.name) { name = device.name }
+                    .help("Rename: type and press Return. Clear the name to go back to the system's.")
                 HStack(spacing: 6) {
                     Circle().fill(device.isConnected ? .green : .secondary.opacity(0.5)).frame(width: 8, height: 8)
                     Text(device.isConnected ? (device.status ?? "Connected") : Util.ago(device.lastConnected))
@@ -192,6 +199,8 @@ struct DeviceCard: View {
                 }
             }
             Spacer()
+            Toggle("Show in menu", isOn: Binding(get: { !device.isHidden }, set: { hub.setHidden(device, !$0) }))
+                .toggleStyle(.switch).controlSize(.small)
         }
     }
 }

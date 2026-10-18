@@ -40,4 +40,11 @@ final class HistoryTests: XCTestCase {
         XCTAssertEqual(DeviceHistory.load(from: url).entries.count, 0)
         XCTAssertTrue(FileManager.default.fileExists(atPath: url.deletingPathExtension().appendingPathExtension("corrupt.json").path))
     }
+
+    func testOldHistoryWithoutNicknamesStillLoads() throws {
+        let json = #"{"entries":{"bt:a":{"id":"bt:a","name":"A","kind":"headphones","lastConnected":"2026-01-01T00:00:00Z"}}}"#
+        let h = try JSONDecoder.iso.decode(DeviceHistory.self, from: Data(json.utf8))
+        XCTAssertEqual(h.entries["bt:a"]?.name, "A")
+        XCTAssertNil(h.entries["bt:a"]?.nickname)
+    }
 }
