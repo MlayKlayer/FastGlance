@@ -99,9 +99,8 @@ import SwiftUI
     }
 
     private static func icon(dot: NSColor?) -> NSImage {
-        let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
-        let symbol = NSImage(systemSymbolName: "rectangle.connected.to.line.below", accessibilityDescription: "FastGlance")!
-            .withSymbolConfiguration(config)!
+        let symbol = NSImage(named: "MenuIcon")!  // template SVG in Assets.xcassets
+        symbol.accessibilityDescription = "FastGlance"
         guard let dot else {
             symbol.isTemplate = true
             return symbol

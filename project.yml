@@ -35,6 +35,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.mlayklayer.FastGlance
         ENABLE_APP_SANDBOX: NO
         ENABLE_HARDENED_RUNTIME: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
   FastGlanceTests:
     type: bundle.unit-test
     platform: macOS
