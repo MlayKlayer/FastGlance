@@ -8,6 +8,7 @@ struct MenuView: View {
     @State private var query = ""
     @State private var expanded: String?
     @State private var selected = 0
+    @ObservedObject private var notifier = Notifier.shared
     @AppStorage("showOffline") private var showOffline = false
     @AppStorage(Prefs.hiddenKinds) private var hiddenRaw = ""
     @AppStorage(Prefs.hotkeys) private var hotkeys = true
@@ -108,7 +109,11 @@ struct MenuView: View {
                 ForEach(devices) { DeviceRow(device: $0, expanded: $expanded, openDetail: openDetail) }
             }
 
+            // Just ejected or still being acted on: stays in view instead of hiding in the collapsed list.
             let offline = visible.filter { !$0.isConnected }
+            ForEach(offline.filter { notifier.statuses[$0.id] != nil }) {
+                DeviceRow(device: $0, expanded: $expanded, openDetail: openDetail)
+            }
             if !offline.isEmpty {
                 Divider()
                 Button {
@@ -123,7 +128,7 @@ struct MenuView: View {
                 }
                 .buttonStyle(.plain)
                 if showOffline || !query.isEmpty {
-                    ForEach(offline.sorted { ($0.lastConnected ?? .distantPast) > ($1.lastConnected ?? .distantPast) }) {
+                    ForEach(offline.filter { notifier.statuses[$0.id] == nil }.sorted { ($0.lastConnected ?? .distantPast) > ($1.lastConnected ?? .distantPast) }) {
                         DeviceRow(device: $0, expanded: $expanded, openDetail: openDetail)
                     }
                 }

@@ -32,6 +32,10 @@ import AppKit
 
     private var loadedAt = Date.distantPast
 
+    func reloadIfStale() {
+        if Date().timeIntervalSince(loadedAt) > 15 { reload() }
+    }
+
     func reload() {
         guard !loading else { return }
         loading = true

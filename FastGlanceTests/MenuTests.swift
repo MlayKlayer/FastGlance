@@ -31,4 +31,14 @@ final class MenuTests: XCTestCase {
         XCTAssertTrue(Search.matches(buds, Search.words("aa:bb")))
         XCTAssertFalse(Search.matches(ssd, Search.words("airpods")))
     }
+
+    func testPinSubtitleSaysWhyItCantRun() {
+        var d = dev("bt:1", "AirPods")
+        let a = DeviceAction(d, "x", "Play Here", "x") {}
+        XCTAssertEqual(DeviceHub.Pin(id: a.id, slot: 0, label: nil, defaultTitle: "Play Here", device: d, action: a).subtitle, "AirPods")
+        XCTAssertEqual(DeviceHub.Pin(id: a.id, slot: 0, label: nil, defaultTitle: "", device: d, action: nil).subtitle, "AirPods · not available now")
+        d.isConnected = false
+        XCTAssertEqual(DeviceHub.Pin(id: a.id, slot: 0, label: "Mine", defaultTitle: "Play Here", device: d, action: nil).subtitle, "AirPods · offline")
+        XCTAssertEqual(DeviceHub.Pin(id: a.id, slot: 0, label: nil, defaultTitle: "", device: nil, action: nil).subtitle, "Device not found")
+    }
 }
