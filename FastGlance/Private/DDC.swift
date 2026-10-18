@@ -22,6 +22,8 @@ enum DDC {
     private static let readI2C = handle.flatMap { dlsym($0, "IOAVServiceReadI2C") }.map { unsafeBitCast($0, to: Transfer.self) }
     private static let writeI2C = handle.flatMap { dlsym($0, "IOAVServiceWriteI2C") }.map { unsafeBitCast($0, to: Transfer.self) }
 
+    static var isAvailable: Bool { create != nil && readI2C != nil && writeI2C != nil }
+
     private static let chip: UInt32 = 0x37
     private static let offset: UInt32 = 0x51
 

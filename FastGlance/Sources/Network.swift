@@ -76,13 +76,14 @@ import Darwin
 
     // MARK: - ARP sweep
 
-    private func sweepIfDue() {
+    /// `maxAge` overrides the configured interval, e.g. to freshen up when the menu opens.
+    func sweepIfDue(maxAge: TimeInterval? = nil) {
         let d = UserDefaults.standard
         guard d.bool(forKey: Prefs.networkScan) else {
             if !arp.isEmpty { arp = [:]; rebuild() }
             return
         }
-        guard !sweeping, Date().timeIntervalSince(lastSweep) >= d.double(forKey: Prefs.networkScanInterval) else { return }
+        guard !sweeping, Date().timeIntervalSince(lastSweep) >= maxAge ?? d.double(forKey: Prefs.networkScanInterval) else { return }
         sweeping = true
         lastSweep = Date()
         let tried = triedReverse

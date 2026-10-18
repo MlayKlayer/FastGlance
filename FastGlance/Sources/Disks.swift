@@ -103,7 +103,7 @@ import AppKit
                 if let message {
                     Notifier.shared.report(id, name, "Couldn't eject: \(message)", failed: true) { [weak self] in self?.eject(url, d) }
                 } else {
-                    Notifier.shared.report(id, name, "Ejected · safe to unplug")
+                    Notifier.shared.report(id, name, "Ejected · safe to unplug", lasts: 60)
                 }
             }
         }

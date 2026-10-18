@@ -66,7 +66,15 @@ import AppKit
     }
 
     /// `system_profiler` is the one public place that reports AirPods L/R/case and HID battery levels.
+    private var profiledAt = Date.distantPast
+
+    /// Battery levels for the menu that's opening; skipped if the last read is fresh.
+    func refreshIfStale() {
+        if Date().timeIntervalSince(profiledAt) > 15, devices.contains(where: \.isConnected) { refreshProfiler() }
+    }
+
     private func refreshProfiler() {
+        profiledAt = Date()
         Util.run("/usr/sbin/system_profiler", ["SPBluetoothDataType", "-json"]) { [weak self] data in
             guard let self else { return }
             let parsed = Self.parseProfiler(data)
