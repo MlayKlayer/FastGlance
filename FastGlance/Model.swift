@@ -3,6 +3,7 @@ import Foundation
 enum DeviceKind: String, Codable, CaseIterable, Identifiable {
     case headphones, speaker, mouse, keyboard, trackpad, gamepad, phone, watch, computer, bluetooth
     case audio, storage, display, camera, usb
+    case printer, media, smartHome, router, network
 
     var id: String { rawValue }
 
@@ -23,6 +24,11 @@ enum DeviceKind: String, Codable, CaseIterable, Identifiable {
         case .display: "Displays"
         case .camera: "Cameras"
         case .usb: "Other USB"
+        case .printer: "Printers"
+        case .media: "TVs & AirPlay"
+        case .smartHome: "Smart Home"
+        case .router: "Routers"
+        case .network: "Network Devices"
         }
     }
 
@@ -43,6 +49,11 @@ enum DeviceKind: String, Codable, CaseIterable, Identifiable {
         case .display: "display"
         case .camera: "web.camera"
         case .usb: "cable.connector"
+        case .printer: "printer"
+        case .media: "tv"
+        case .smartHome: "house"
+        case .router: "wifi.router"
+        case .network: "network"
         }
     }
 

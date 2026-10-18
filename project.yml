@@ -27,7 +27,7 @@ targets:
         NSBluetoothAlwaysUsageDescription: FastGlance lists your Bluetooth devices and lets you connect, disconnect and see their battery.
         NSCameraUsageDescription: FastGlance shows a camera preview when you ask for it.
         NSLocalNetworkUsageDescription: FastGlance discovers devices on your local network.
-        NSBonjourServices: [_airplay._tcp, _raop._tcp, _ipp._tcp, _ipps._tcp, _printer._tcp, _smb._tcp, _afpovertcp._tcp, _googlecast._tcp, _hap._tcp, _ssh._tcp, _http._tcp, _companion-link._tcp]
+        NSBonjourServices: [_airplay._tcp, _raop._tcp, _ipp._tcp, _ipps._tcp, _printer._tcp, _smb._tcp, _afpovertcp._tcp, _googlecast._tcp, _hap._tcp, _ssh._tcp, _http._tcp, _companion-link._tcp, _rfb._tcp, _sonos._tcp, _spotify-connect._tcp, _matter._tcp]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.mlayklayer.FastGlance

@@ -4,22 +4,32 @@ enum Util {
     /// Runs a command off the main thread and hands stdout back on main.
     static func run(_ path: String, _ args: [String], completion: @escaping @MainActor (Data) -> Void) {
         DispatchQueue.global(qos: .utility).async {
-            let p = Process()
-            p.executableURL = URL(fileURLWithPath: path)
-            p.arguments = args
-            let pipe = Pipe()
-            p.standardOutput = pipe
-            p.standardError = FileHandle.nullDevice
-            var data = Data()
-            do {
-                try p.run()
-                data = pipe.fileHandleForReading.readDataToEndOfFile()
-                p.waitUntilExit()
-            } catch {
-                NSLog("FastGlance: \(path) failed: \(error)")
-            }
+            let data = output(path, args)
             DispatchQueue.main.async { MainActor.assumeIsolated { completion(data) } }
         }
+    }
+
+    /// Blocking; call off the main thread.
+    nonisolated static func output(_ path: String, _ args: [String]) -> Data {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: path)
+        p.arguments = args
+        let pipe = Pipe()
+        p.standardOutput = pipe
+        p.standardError = FileHandle.nullDevice
+        do {
+            try p.run()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            p.waitUntilExit()
+            return data
+        } catch {
+            NSLog("FastGlance: \(path) failed: \(error)")
+            return Data()
+        }
+    }
+
+    nonisolated static func text(_ path: String, _ args: [String]) -> String {
+        String(decoding: output(path, args), as: UTF8.self)
     }
 
     static func copy(_ s: String) {

@@ -42,7 +42,9 @@ import Foundation
             guard let low = dev.lowestBattery else { continue }
             if low <= threshold, !lowWarned.contains(dev.id) {
                 lowWarned.insert(dev.id)
-                if d.bool(forKey: Prefs.notifyBattery) { post("\(dev.name) battery low", "\(low)% remaining") }
+                if d.bool(forKey: Prefs.notifyBattery) {
+                    post(dev.kind == .printer ? "\(dev.name) is low on ink" : "\(dev.name) battery low", "\(low)% remaining")
+                }
             } else if low > threshold + 5 {
                 lowWarned.remove(dev.id)  // charged again; warn on the next drop
             }

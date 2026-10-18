@@ -10,6 +10,10 @@ private func drain(_ it: io_iterator_t) {
     let prefix = "usb"
     var onChange: (() -> Void)?
     private(set) var devices: [Device] = []
+    /// Serials of every attached USB device, including ones shown by other sources.
+    private(set) var presentSerials: Set<String> = []
+    /// Serials another source shows instead (printers with a CUPS queue).
+    var claimedSerials: () -> Set<String> = { [] }
     private var port: IONotificationPortRef?
     private var iterators: [io_iterator_t] = []
 
@@ -41,11 +45,18 @@ private func drain(_ it: io_iterator_t) {
         guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("IOUSBHostDevice"), &iter) == KERN_SUCCESS else { return }
         defer { IOObjectRelease(iter) }
         var next: [Device] = []
+        var serials = Set<String>()
+        let claimed = claimedSerials()
         while case let service = IOIteratorNext(iter), service != 0 {
-            if let d = device(service) { next.append(d) }
+            let p = Self.props(service)
+            let serial = (p["USB Serial Number"] as? String) ?? (p["kUSBSerialNumberString"] as? String)
+            if let serial { serials.insert(serial) }
+            if serial.map({ !claimed.contains($0) }) ?? true, let d = device(service, p) { next.append(d) }
             IOObjectRelease(service)
         }
-        if next != devices { devices = next; onChange?() }
+        let serialsChanged = serials != presentSerials
+        presentSerials = serials
+        if next != devices || serialsChanged { devices = next; onChange?() }
     }
 
     private static func props(_ entry: io_registry_entry_t) -> [String: Any] {
@@ -69,8 +80,7 @@ private func drain(_ it: io_iterator_t) {
         return out
     }
 
-    private func device(_ service: io_service_t) -> Device? {
-        let p = Self.props(service)
+    private func device(_ service: io_service_t, _ p: [String: Any]) -> Device? {
         let deviceClass = p["bDeviceClass"] as? Int ?? 0
         guard deviceClass != 9 else { return nil }  // hubs
         let ifaces = interfaces(service)
@@ -88,6 +98,7 @@ private func drain(_ it: io_iterator_t) {
         let kind: DeviceKind
         if vendorID == 0x05AC, name.contains("iPhone") || name.contains("iPad") { kind = .phone }
         else if classes.contains(14) { kind = .camera }
+        else if classes.contains(7) { kind = .printer }
         else if ifaces.contains(where: { $0.cls == 3 && $0.proto == 1 }) { kind = .keyboard }
         else if ifaces.contains(where: { $0.cls == 3 && $0.proto == 2 }) { kind = .mouse }
         else { kind = .usb }
