@@ -72,7 +72,8 @@ struct Device: Identifiable, Hashable {
     var raw: [InfoRow] = []
     var lastConnected: Date? = nil
 
-    var lowestBattery: Int? { batteries.map(\.percent).min() }
+    /// The AirPods case is excluded: a low case shouldn't raise alerts while the buds are full.
+    var lowestBattery: Int? { batteries.filter { $0.label != "Case" }.map(\.percent).min() }
 }
 
 struct DeviceAction: Identifiable {

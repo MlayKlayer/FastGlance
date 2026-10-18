@@ -21,9 +21,15 @@ struct DeviceHistory: Codable, Equatable {
             e.name = d.name
             e.kind = d.kind
             if d.isConnected { e.lastConnected = now }
+            else if e.lastConnected == nil { e.lastConnected = d.lastConnected }  // source's own hint, e.g. Bluetooth last access
             entries[d.id] = e
         }
         return changed
+    }
+
+    /// Stamps devices that just went away, so "last seen" is the moment they disconnected.
+    mutating func markDisconnected(_ ids: Set<String>, now: Date) {
+        for id in ids { entries[id]?.lastConnected = now }
     }
 
     static let url: URL = {

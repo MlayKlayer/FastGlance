@@ -17,7 +17,9 @@ Requires Xcode 16 and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew i
 ```sh
 xcodegen generate
 xcodebuild -project FastGlance.xcodeproj -scheme FastGlance -derivedDataPath build build
-open build/Build/Products/Debug/FastGlance.app
+# install where launch-at-login can find it after rebuilds
+rm -rf ~/Applications/FastGlance.app && cp -R build/Build/Products/Debug/FastGlance.app ~/Applications/
+open ~/Applications/FastGlance.app
 ```
 
 Set `DEVELOPMENT_TEAM` in `project.yml` to your own team ID (the `OU` of your Apple Development certificate).

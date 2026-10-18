@@ -22,7 +22,10 @@ import AppKit
         connectNote = IOBluetoothDevice.register(forConnectNotifications: self, selector: #selector(didConnect(_:device:)))
         // Polling catches state the notifications miss (renames, devices paired elsewhere).
         timers.append(.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.reload() } })
-        timers.append(.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.refreshProfiler() } })
+        timers.append(.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in MainActor.assumeIsolated {
+            // system_profiler is not free; only poll while something can report a battery.
+            if self?.devices.contains(where: \.isConnected) == true { self?.refreshProfiler() }
+        } })
         reload()
         refreshProfiler()
     }
@@ -44,6 +47,7 @@ import AppKit
             guard let addr = d.addressString?.lowercased() else { return nil }
             let connected = d.isConnected()
             var dev = Device(id: "bt:\(addr)", name: d.name ?? addr.uppercased(), kind: Self.kind(d), isConnected: connected)
+            if !connected { dev.lastConnected = d.recentAccessDate() }
             if connected {
                 dev.batteries = batteries[addr] ?? []
                 let isOutput = audio.outputs(forBluetoothAddress: addr).contains { $0.id == audio.defaultOutput }
