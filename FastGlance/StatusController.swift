@@ -37,7 +37,7 @@ import SwiftUI
         if event.type == .rightMouseUp || event.modifierFlags.contains(.control) {
             showContextMenu()
         } else if event.modifierFlags.contains(.option) {
-            if let first = hub.pinnedActions.first {
+            if let first = hub.pinnedAction(slot: 0) {
                 first.action.run()
                 flash()
             } else {

@@ -28,7 +28,7 @@ struct DetailView: View {
                                     Text(d.isConnected ? "Connected" : Util.ago(d.lastConnected)).font(.caption).foregroundStyle(.secondary)
                                 }
                             } icon: {
-                                Image(systemName: d.kind.symbol).foregroundStyle(d.isConnected ? Color.accentColor : .secondary)
+                                Image(systemName: d.icon).foregroundStyle(d.isConnected ? Color.accentColor : .secondary)
                             }
                             .tag(d.id)
                         }
@@ -123,7 +123,7 @@ struct DeviceCard: View {
                 }
 
                 GroupBox("Information") {
-                    InfoGrid(rows: [InfoRow("Type", device.kind.title),
+                    InfoGrid(rows: [InfoRow("Category", device.kind.title),
                                     InfoRow("Last connected", device.isConnected ? "Now" : (device.lastConnected?.formatted(date: .abbreviated, time: .shortened) ?? "Unknown"))]
                              + device.info)
                         .padding(6)
@@ -161,7 +161,7 @@ struct DeviceCard: View {
 
     private var header: some View {
         HStack(spacing: 16) {
-            Image(systemName: device.kind.symbol)
+            Image(systemName: device.icon)
                 .font(.system(size: 30))
                 .frame(width: 64, height: 64)
                 .foregroundStyle(device.isConnected ? Color.accentColor : .secondary)

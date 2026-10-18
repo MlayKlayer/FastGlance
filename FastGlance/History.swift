@@ -21,7 +21,6 @@ struct DeviceHistory: Codable, Equatable {
             e.name = d.name
             e.kind = d.kind
             if d.isConnected { e.lastConnected = now }
-            else if e.lastConnected == nil { e.lastConnected = d.lastConnected }  // source's own hint, e.g. Bluetooth last access
             entries[d.id] = e
         }
         return changed

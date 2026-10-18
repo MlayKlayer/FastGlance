@@ -65,3 +65,20 @@ final class DDCTests: XCTestCase {
         XCTAssertEqual(DDC.checksum([0x84, 0x03, 0x10, 0x00, 0x32]), 0x6E ^ 0x51 ^ 0x84 ^ 0x03 ^ 0x10 ^ 0x32)
     }
 }
+
+@MainActor final class PinTests: XCTestCase {
+    func testPinsResolveBySlotNotByFilteredPosition() {
+        let buds = Device(id: "bt:a", name: "Buds", kind: .headphones, isConnected: true)
+        let disk = Device(id: "disk:b", name: "Disk", kind: .storage, isConnected: true)
+        var ran: [String] = []
+        let actions: (Device) -> [DeviceAction] = { d in
+            d.id == "disk:b" ? [DeviceAction(d, "eject", "Eject", "eject") { ran.append("eject") }] : []
+        }
+        let pins = ["bt:a|gone", "disk:b|eject"]
+        // Slot 0 can't run right now: it must not fall through to the disk.
+        XCTAssertNil(DeviceHub.resolve(pin: pins[0], devices: [buds, disk], actions: actions))
+        DeviceHub.resolve(pin: pins[1], devices: [buds, disk], actions: actions)?.action.run()
+        XCTAssertEqual(ran, ["eject"])
+        XCTAssertNil(DeviceHub.resolve(pin: nil, devices: [buds, disk], actions: actions))
+    }
+}

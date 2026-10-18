@@ -48,7 +48,6 @@ import AppKit
             guard let addr = d.addressString?.lowercased() else { return nil }
             let connected = d.isConnected()
             var dev = Device(id: "bt:\(addr)", name: d.name ?? addr.uppercased(), kind: Self.kind(d), isConnected: connected)
-            if !connected { dev.lastConnected = d.recentAccessDate() }
             if connected {
                 dev.batteries = batteries[addr] ?? []
                 if dev.batteries.isEmpty, dev.kind == .gamepad, let pad = Gamepads.controller(named: dev.name) {
@@ -133,27 +132,33 @@ import AppKit
     func actions(for device: Device) -> [DeviceAction] {
         let addr = address(device)
         let isAudio = device.kind == .headphones || device.kind == .speaker
+        // Pinnable actions keep the same id in every state (titles flip instead), so a pin never goes missing.
         var out: [DeviceAction] = []
-        if device.isConnected {
-            if let a = audio.outputs(forBluetoothAddress: addr).first {
-                out += audio.actions(for: a, device: device)
+        let output = audio.outputs(forBluetoothAddress: addr).first
+        if isAudio {
+            let playHere = DeviceAction(device, "playhere", "Play Here", "play.circle") { [weak self] in
+                self?.playHerePending.insert(addr)
+                self?.connect(addr)  // already connected: just routes audio
             }
-            if device.kind == .gamepad, let pad = Gamepads.controller(named: device.name) {
-                out.append(DeviceAction(device, "vibrate", "Test Vibration", "waveform") { Gamepads.vibrate(pad) })
+            let playingHere = device.isConnected && output?.id == audio.defaultOutput
+            if !playingHere { out.append(playHere) }
+            if let output, device.isConnected {
+                out += audio.actions(for: output, device: device).filter { !$0.id.hasSuffix("|output") }  // Play Here covers it
             }
-            out.append(DeviceAction(device, "disconnect", "Disconnect", "xmark.circle") { [weak self] in
+            if playingHere { out.append(playHere) }
+        }
+        if device.isConnected, device.kind == .gamepad, let pad = Gamepads.controller(named: device.name) {
+            out.append(DeviceAction(device, "vibrate", "Test Vibration", "waveform") { Gamepads.vibrate(pad) })
+        }
+        let connected = device.isConnected
+        out.append(DeviceAction(device, "connection", connected ? "Disconnect" : "Connect", connected ? "xmark.circle" : "link") { [weak self] in
+            if connected {
                 IOBluetoothDevice(addressString: addr)?.closeConnection()
                 self?.reload()
-            })
-        } else {
-            if isAudio {
-                out.append(DeviceAction(device, "playhere", "Play Here", "play.circle") { [weak self] in
-                    self?.playHerePending.insert(addr)
-                    self?.connect(addr)
-                })
+            } else {
+                self?.connect(addr)
             }
-            out.append(DeviceAction(device, "connect", "Connect", "link") { [weak self] in self?.connect(addr) })
-        }
+        })
         out.append(DeviceAction(device, "settings", "Bluetooth Settings…", "gearshape") {
             Util.open("x-apple.systempreferences:com.apple.BluetoothSettings")
         })
