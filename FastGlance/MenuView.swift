@@ -277,28 +277,40 @@ struct ControlView: View {
     @State private var value = 0.0
     @State private var index = 0
     @State private var on = false
+    @State private var dragging = false
+    /// Re-reads the hardware while visible, so changes made elsewhere (keyboard, other apps) show up.
+    private static let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
+        Group {
+            switch control.kind {
+            case let .slider(_, set):
+                HStack(spacing: 8) {
+                    Image(systemName: control.symbol).frame(width: 18).foregroundStyle(.secondary).help(control.title)
+                    Slider(value: Binding(get: { value }, set: { value = $0; set($0) }), in: 0...1) { dragging = $0 }
+                        .controlSize(.small)
+                    Text("\(Int(value * 100))%").font(.caption.monospacedDigit()).foregroundStyle(.secondary).frame(width: 34, alignment: .trailing)
+                }
+            case let .toggle(_, set):
+                Toggle(isOn: Binding(get: { on }, set: { on = $0; set($0) })) { Label(control.title, systemImage: control.symbol) }
+            case let .picker(options, _, set):
+                Picker(selection: Binding(get: { index }, set: { index = $0; set($0) })) {
+                    ForEach(options.indices, id: \.self) { Text(options[$0]).tag($0) }
+                } label: {
+                    Label(control.title, systemImage: control.symbol).font(.caption)
+                }
+                .controlSize(.small)
+            }
+        }
+        .onAppear(perform: read)
+        .onReceive(Self.tick) { _ in read() }
+    }
+
+    private func read() {
         switch control.kind {
-        case let .slider(get, set):
-            HStack(spacing: 8) {
-                Image(systemName: control.symbol).frame(width: 18).foregroundStyle(.secondary).help(control.title)
-                Slider(value: Binding(get: { value }, set: { value = $0; set($0) }), in: 0...1)
-                    .controlSize(.small)
-                Text("\(Int(value * 100))%").font(.caption.monospacedDigit()).foregroundStyle(.secondary).frame(width: 34, alignment: .trailing)
-            }
-            .onAppear { value = get() }
-        case let .toggle(get, set):
-            Toggle(isOn: Binding(get: { on }, set: { on = $0; set($0) })) { Label(control.title, systemImage: control.symbol) }
-                .onAppear { on = get() }
-        case let .picker(options, get, set):
-            Picker(selection: Binding(get: { index }, set: { index = $0; set($0) })) {
-                ForEach(options.indices, id: \.self) { Text(options[$0]).tag($0) }
-            } label: {
-                Label(control.title, systemImage: control.symbol).font(.caption)
-            }
-            .controlSize(.small)
-            .onAppear { index = get() }
+        case let .slider(get, _): if !dragging { value = get() }
+        case let .toggle(get, _): on = get()
+        case let .picker(_, get, _): index = get()
         }
     }
 }

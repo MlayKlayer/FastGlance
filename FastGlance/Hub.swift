@@ -119,6 +119,11 @@ enum Prefs {
         source(for: d)?.controls(for: d) ?? []
     }
 
+    /// Offline but still reported by a source (a paired Bluetooth device, an installed printer): forgetting it here can't stick.
+    func isKnownToSystem(_ d: Device) -> Bool {
+        source(for: d)?.devices.contains { $0.id == d.id } ?? false
+    }
+
     func forget(_ d: Device) {
         history.entries[d.id] = nil
         history.save()

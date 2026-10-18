@@ -25,7 +25,10 @@ import Darwin
 
     private var browsers: [NetServiceBrowser] = []
     private var services: [NetService] = []
-    private var arp: [String: String] = [:]        // ip -> mac
+    private var arp: [String: String] = [:]        // ip -> mac, last sweep only
+    private var macs: [String: String] = [:]       // ip -> mac, every one seen; kept when scanning is off so ids stay stable
+    private var macTried: Set<String> = []
+    private var resolvingMACs = false
     private var reverseNames: [String: String] = [:]
     private var triedReverse: Set<String> = []
     private var gateway: String?
@@ -95,13 +98,12 @@ import Darwin
             let names = Dictionary(uniqueKeysWithValues: table.keys.filter { !tried.contains($0) }.compactMap { ip in
                 Self.reverseDNS(ip).map { (ip, $0) }
             })
-            let own = Self.ownIPv4s()
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     self.sweeping = false
                     self.arp = table
+                    self.macs.merge(table) { $1 }
                     self.gateway = gw
-                    self.ownIPs = own
                     self.triedReverse.formUnion(table.keys)
                     self.reverseNames.merge(names) { $1 }
                     self.rebuild()
@@ -113,6 +115,10 @@ import Darwin
     // MARK: - Merge
 
     func rebuild() {
+        // A new network (or a new address on this one) means the cached IP -> MAC pairs may belong to other devices now.
+        // ponytail: two networks that both hand this Mac the same IP keep the cache; a DHCP reshuffle there can mislabel a host.
+        let own = Self.ownIPv4s()
+        if own != ownIPs { ownIPs = own; macs = [:]; macTried = [] }
         let claimed = claimedServiceNames()
         liveServiceNames = Set(services.map(\.name))
         var byKey: [String: Host] = [:]
@@ -135,9 +141,14 @@ import Darwin
 
         var nextHosts: [String: Host] = [:]
         var next: [Device] = []
+        var unknownMAC: [String] = []
         // The gateway is shown by the Internet row (router or iPhone hotspot).
         for (key, var h) in byKey where !claimedKeys.contains(key) && (h.ip == nil || h.ip != gateway) {
-            if let ip = h.ip { h.mac = arp[ip] }
+            if let ip = h.ip {
+                h.mac = macs[ip]
+                // The id comes from the MAC, so look it up before showing the host instead of renaming it later.
+                if h.mac == nil && !macTried.contains(ip) { unknownMAC.append(ip); continue }
+            }
             let id = h.mac.map { "net:\($0)" } ?? "net:host:\(h.hostName ?? key)"
             nextHosts[id] = h
             next.append(device(id: id, h))
@@ -145,6 +156,25 @@ import Darwin
         hosts = nextHosts
         next.sort { $0.id < $1.id }
         if next != devices { devices = next; onChange?() }
+        if !unknownMAC.isEmpty && !resolvingMACs { lookUpMACs(unknownMAC) }
+    }
+
+    /// One datagram to each Bonjour host makes the kernel ARP for it, even with network scanning off.
+    private func lookUpMACs(_ ips: [String]) {
+        resolvingMACs = true
+        DispatchQueue.global(qos: .utility).async {
+            Self.udpSend([0], to: ips, port: 9)
+            Thread.sleep(forTimeInterval: 1)
+            let table = Self.parseARP(Util.text("/usr/sbin/arp", ["-an"]))
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    self.resolvingMACs = false
+                    self.macTried.formUnion(ips)
+                    self.macs.merge(table) { $1 }
+                    self.rebuild()
+                }
+            }
+        }
     }
 
     private func device(id: String, _ h: Host) -> Device {

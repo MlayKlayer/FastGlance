@@ -43,8 +43,9 @@ import Darwin
             let mac = gw.flatMap { NetworkSource.parseARP(Util.text("/usr/sbin/arp", ["-n", $0]))[$0] }
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
+                    // The MAC is the row's id; a missed ARP lookup on the same router mustn't turn it into a new device.
+                    self.gatewayMAC = mac ?? (gw == self.gateway ? self.gatewayMAC : nil)
                     self.gateway = gw
-                    self.gatewayMAC = mac
                     self.gatewayKnown = true
                     self.rebuild()
                 }
