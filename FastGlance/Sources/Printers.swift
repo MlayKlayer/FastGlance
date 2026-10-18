@@ -14,7 +14,6 @@ import AppKit
     private var queues: [Queue] = []
     private let usb: USBSource
     private let network: NetworkSource
-    private var timer: Timer?
     private var loading = false
 
     init(usb: USBSource, network: NetworkSource) {
@@ -23,7 +22,7 @@ import AppKit
     }
 
     func start() {
-        timer = .scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.reload() } }
+        _ = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.reload() } }
         reload()
     }
 

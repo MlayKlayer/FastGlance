@@ -26,10 +26,6 @@ enum Prefs {
     static func kinds(_ key: String) -> Set<DeviceKind> {
         Set((UserDefaults.standard.string(forKey: key) ?? "").split(separator: ",").compactMap { DeviceKind(rawValue: String($0)) })
     }
-
-    static func setKinds(_ key: String, _ kinds: Set<DeviceKind>) {
-        UserDefaults.standard.set(kinds.map(\.rawValue).sorted().joined(separator: ","), forKey: key)
-    }
 }
 
 /// Merges every source with the remembered history and owns pins.
@@ -163,14 +159,5 @@ enum Prefs {
               let device = devices.first(where: { $0.id == deviceID }),
               let action = actions(device).first(where: { $0.id == pin }) else { return nil }
         return (device, action)
-    }
-}
-
-extension DeviceAction {
-    init(id: String, title: String, symbol: String, run: @escaping () -> Void) {
-        self.id = id
-        self.title = title
-        self.symbol = symbol
-        self.run = run
     }
 }

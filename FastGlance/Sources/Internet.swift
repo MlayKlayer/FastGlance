@@ -16,7 +16,6 @@ import Darwin
     private var gatewayMAC: String?
     private var gatewayKnown = false
     private var hotspotStart: (iface: String, bytes: UInt64)?
-    private var timers: [Timer] = []
 
     func start() {
         location.delegate = self
@@ -30,8 +29,8 @@ import Darwin
             }
         }
         monitor.start(queue: .global(qos: .utility))
-        timers.append(.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.rebuild() } })
-        timers.append(.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.refreshGateway() } })
+        _ = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.rebuild() } }
+        _ = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.refreshGateway() } }
     }
 
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
@@ -178,19 +177,7 @@ import Darwin
     }
 
     nonisolated static func ipv4(of iface: String) -> String? {
-        var list: UnsafeMutablePointer<ifaddrs>?
-        guard getifaddrs(&list) == 0 else { return nil }
-        defer { freeifaddrs(list) }
-        var cur = list
-        while let ifa = cur?.pointee {
-            defer { cur = ifa.ifa_next }
-            guard let addr = ifa.ifa_addr, addr.pointee.sa_family == sa_family_t(AF_INET), String(cString: ifa.ifa_name) == iface else { continue }
-            var a = addr.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { $0.pointee.sin_addr }
-            var buf = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
-            inet_ntop(AF_INET, &a, &buf, socklen_t(INET_ADDRSTRLEN))
-            return String(cString: buf)
-        }
-        return nil
+        NetworkSource.interfaceIPv4s().first { $0.iface == iface }?.ip
     }
 
     /// 64-bit in+out byte counters for one interface (getifaddrs only has 32-bit ones that wrap at 4 GB).

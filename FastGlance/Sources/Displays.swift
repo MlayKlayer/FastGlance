@@ -14,13 +14,12 @@ import CoreGraphics
     private let ddcQueue = DispatchQueue(label: "FastGlance.ddc")
 
     // Brightness sync: external monitors follow the built-in display.
-    private var syncTimer: Timer?
     private var lastMaster: Float?
     private var lastWritten: [CGDirectDisplayID: Double] = [:]
     static let offsets = [-0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3]
 
     func start() {
-        syncTimer = .scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+        _ = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.syncBrightness() }
         }
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in

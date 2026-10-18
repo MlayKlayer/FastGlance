@@ -11,7 +11,6 @@ import AppKit
     private var batteries: [String: [Battery]] = [:]
     private var extraInfo: [String: [InfoRow]] = [:]
     private var playHerePending: Set<String> = []
-    private var timers: [Timer] = []
     private var connectNote: IOBluetoothUserNotification?
 
     init(audio: AudioSource) {
@@ -21,11 +20,11 @@ import AppKit
     func start() {
         connectNote = IOBluetoothDevice.register(forConnectNotifications: self, selector: #selector(didConnect(_:device:)))
         // Polling catches state the notifications miss (renames, devices paired elsewhere).
-        timers.append(.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.reload() } })
-        timers.append(.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in MainActor.assumeIsolated {
+        _ = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.reload() } }
+        _ = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in MainActor.assumeIsolated {
             // system_profiler is not free; only poll while something can report a battery.
             if self?.devices.contains(where: \.isConnected) == true { self?.refreshProfiler() }
-        } })
+        } }
         Gamepads.start { [weak self] in self?.reload() }
         reload()
         refreshProfiler()
