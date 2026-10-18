@@ -136,7 +136,8 @@ import Darwin
 
         var nextHosts: [String: Host] = [:]
         var next: [Device] = []
-        for (key, var h) in byKey where !claimedKeys.contains(key) {
+        // The gateway is shown by the Internet row (router or iPhone hotspot).
+        for (key, var h) in byKey where !claimedKeys.contains(key) && (h.ip == nil || h.ip != gateway) {
             if let ip = h.ip { h.mac = arp[ip] }
             let id = h.mac.map { "net:\($0)" } ?? "net:host:\(h.hostName ?? key)"
             nextHosts[id] = h
@@ -235,7 +236,7 @@ import Darwin
         return out
     }
 
-    private static func ping(_ ip: String, name: String) {
+    static func ping(_ ip: String, name: String) {
         Util.run("/sbin/ping", ["-c", "3", "-t", "5", ip]) { data in
             let text = String(decoding: data, as: UTF8.self)
             // "round-trip min/avg/max/stddev = 1.1/2.2/3.3/0.4 ms"

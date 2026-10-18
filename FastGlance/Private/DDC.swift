@@ -25,19 +25,67 @@ enum DDC {
     private static let chip: UInt32 = 0x37
     private static let offset: UInt32 = 0x51
 
-    /// AV services of external displays, in registry order.
-    static func externalServices() -> [CFTypeRef] {
+    struct Identity: Equatable {
+        var vendor: Int?
+        var product: Int?
+        var serial: Int?
+    }
+
+    struct Service {
+        let ref: CFTypeRef
+        let identity: Identity
+    }
+
+    /// AV services of external displays, each tagged with the EDID identity of the framebuffer that precedes it
+    /// in the registry (the same walk MonitorControl uses), so two monitors can't be swapped.
+    static func externalServices() -> [Service] {
         guard let create else { return [] }
         var iter: io_iterator_t = 0
-        guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("DCPAVServiceProxy"), &iter) == KERN_SUCCESS else { return [] }
+        let root = IORegistryGetRootEntry(kIOMainPortDefault)
+        defer { IOObjectRelease(root) }
+        guard IORegistryEntryCreateIterator(root, kIOServicePlane, IOOptionBits(kIORegistryIterateRecursively), &iter) == KERN_SUCCESS else { return [] }
         defer { IOObjectRelease(iter) }
-        var out: [CFTypeRef] = []
-        while case let s = IOIteratorNext(iter), s != 0 {
-            let location = IORegistryEntryCreateCFProperty(s, "Location" as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? String
-            if location == "External", let svc = create(kCFAllocatorDefault, s)?.takeRetainedValue() { out.append(svc) }
-            IOObjectRelease(s)
+        var out: [Service] = []
+        var last = Identity()
+        while case let e = IOIteratorNext(iter), e != 0 {
+            defer { IOObjectRelease(e) }
+            if let attrs = IORegistryEntryCreateCFProperty(e, "DisplayAttributes" as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? [String: Any],
+               let product = attrs["ProductAttributes"] as? [String: Any] {
+                last = Identity(vendor: product["LegacyManufacturerID"] as? Int, product: product["ProductID"] as? Int,
+                                serial: product["SerialNumber"] as? Int)
+            }
+            guard IOObjectConformsTo(e, "DCPAVServiceProxy") != 0,
+                  IORegistryEntryCreateCFProperty(e, "Location" as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? String == "External",
+                  let svc = create(kCFAllocatorDefault, e)?.takeRetainedValue() else { continue }
+            out.append(Service(ref: svc, identity: last))
+            last = Identity()
         }
         return out
+    }
+
+    /// Pairs displays with services: exact EDID match first, then whatever is left in order.
+    /// Returns display index -> service index.
+    static func pair(displays: [Identity], services: [Identity]) -> [Int: Int] {
+        var result: [Int: Int] = [:]
+        var free = Array(services.indices)
+        func matches(_ d: Identity, _ s: Identity) -> Bool {
+            guard d.vendor != nil, d.vendor == s.vendor, d.product == s.product else { return false }
+            let ds = d.serial ?? 0, ss = s.serial ?? 0
+            return ds == 0 || ss == 0 || ds == ss
+        }
+        // Serial-exact matches first so two identical models with different serials pair correctly.
+        for strict in [true, false] {
+            for (i, d) in displays.enumerated() where result[i] == nil {
+                if let k = free.firstIndex(where: { matches(d, services[$0]) && (!strict || (d.serial ?? 0) == (services[$0].serial ?? 0)) }) {
+                    result[i] = free.remove(at: k)
+                }
+            }
+        }
+        for i in displays.indices where result[i] == nil {
+            guard !free.isEmpty else { break }
+            result[i] = free.removeFirst()
+        }
+        return result
     }
 
     /// Blocking (tens of ms); call off the main thread.

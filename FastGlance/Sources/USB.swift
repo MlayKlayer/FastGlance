@@ -102,32 +102,24 @@ private func drain(_ it: io_iterator_t) {
         else if ifaces.contains(where: { $0.cls == 3 && $0.proto == 2 }) { kind = .mouse }
         else { kind = .usb }
 
-        let speed = Self.speedName(p["Device Speed"] as? Int ?? p["USBSpeed"] as? Int)
+        let doctor = USBDoctor.report(usbDevice: service, props: p, isStorage: false)
+        let speed = doctor.link
         var info = [InfoRow("Vendor", vendor ?? "—"),
                     InfoRow("Vendor ID", String(format: "0x%04X", vendorID)),
                     InfoRow("Product ID", String(format: "0x%04X", productID)),
-                    InfoRow("Speed", speed),
+                    InfoRow("Connection", speed),
                     InfoRow("Location", String(format: "0x%08X", location))]
+        if !doctor.via.isEmpty { info.append(InfoRow("Through", doctor.via.joined(separator: " → "))) }
         if let serial { info.append(InfoRow("Serial", serial)) }
         if let ma = p["UsbPowerSinkAllocation"] as? Int ?? p["kUSBCurrentAvailable"] as? Int { info.append(InfoRow("Power", "\(ma) mA")) }
 
         let raw = p.map { InfoRow($0.key, "\($0.value)") }.sorted { $0.key < $1.key }
         let stable = serial.map { "\($0)" } ?? String(format: "loc%08X", location)
         return Device(id: String(format: "usb:%04x:%04x:", vendorID, productID) + stable, name: name, kind: kind,
-                      isConnected: true, status: [vendor, speed].compactMap { $0 }.joined(separator: " · "), info: info, raw: raw)
+                      isConnected: true, status: [vendor, speed].compactMap { $0 }.joined(separator: " · "), info: info, raw: raw,
+                      warning: doctor.warning)
     }
 
-    static func speedName(_ s: Int?) -> String {
-        switch s {
-        case 0: "Low speed (1.5 Mb/s)"
-        case 1: "Full speed (12 Mb/s)"
-        case 2: "High speed (480 Mb/s)"
-        case 3: "SuperSpeed (5 Gb/s)"
-        case 4: "SuperSpeed+ (10 Gb/s)"
-        case 5: "SuperSpeed+ (20 Gb/s)"
-        default: "Unknown"
-        }
-    }
 
     func actions(for device: Device) -> [DeviceAction] {
         var out: [DeviceAction] = []

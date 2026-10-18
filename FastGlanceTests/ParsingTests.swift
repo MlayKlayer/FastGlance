@@ -82,3 +82,36 @@ final class DDCTests: XCTestCase {
         XCTAssertNil(DeviceHub.resolve(pin: nil, devices: [buds, disk], actions: actions))
     }
 }
+
+final class USBDoctorTests: XCTestCase {
+    func testAssess() {
+        // USB 3 SSD on a USB 2 cable: reports bcdUSB 0x0210 at high speed.
+        XCTAssertNotNil(USBDoctor.assess(speed: 2, bcdUSB: 0x0210, isStorage: true, hubs: []).warning)
+        // Same, but behind a USB 2 hub: blame the hub.
+        let viaHub = USBDoctor.assess(speed: 2, bcdUSB: 0x0210, isStorage: true, hubs: [.init(name: "Old Hub", speed: 2)])
+        XCTAssertTrue(viaHub.warning?.contains("Old Hub") == true)
+        // Plain USB 2 flash drive: no warning, just a note.
+        let stick = USBDoctor.assess(speed: 2, bcdUSB: 0x0200, isStorage: true, hubs: [])
+        XCTAssertNil(stick.warning)
+        XCTAssertNotNil(stick.note)
+        // USB 2 mouse behind a USB 2 hub: nothing to fix.
+        XCTAssertNil(USBDoctor.assess(speed: 1, bcdUSB: 0x0200, isStorage: false, hubs: [.init(name: "Hub", speed: 2)]).warning)
+        // Healthy 10 Gb/s SSD.
+        let ssd = USBDoctor.assess(speed: 4, bcdUSB: 0x0320, isStorage: true, hubs: [])
+        XCTAssertNil(ssd.warning)
+        XCTAssertEqual(ssd.link, "USB 3.2 Gen 2 · 10 Gb/s")
+    }
+}
+
+final class DDCPairTests: XCTestCase {
+    func testTwoIdenticalMonitorsPairBySerial() {
+        let a = DDC.Identity(vendor: 0x10AC, product: 0xA0C4, serial: 111)
+        let b = DDC.Identity(vendor: 0x10AC, product: 0xA0C4, serial: 222)
+        // Services found in the opposite order to the displays.
+        XCTAssertEqual(DDC.pair(displays: [a, b], services: [b, a]), [0: 1, 1: 0])
+        // Unknown identities fall back to order.
+        XCTAssertEqual(DDC.pair(displays: [a, b], services: [DDC.Identity(), DDC.Identity()]), [0: 0, 1: 1])
+        // More displays than services: the extra one gets nothing.
+        XCTAssertEqual(DDC.pair(displays: [a, b], services: [b]), [1: 0])
+    }
+}

@@ -42,7 +42,10 @@ enum Util {
     }
 
     static func bytes(_ n: Int) -> String {
-        ByteCountFormatter.string(fromByteCount: Int64(n), countStyle: .file)
+        let f = ByteCountFormatter()
+        f.countStyle = .file
+        f.allowsNonnumericFormatting = false  // "0 bytes", not "Zero KB"
+        return f.string(fromByteCount: Int64(n))
     }
 
     static func ago(_ date: Date?) -> String {

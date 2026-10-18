@@ -49,5 +49,9 @@
 	<string>FastGlance shows a camera preview when you ask for it.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>FastGlance discovers devices on your local network.</string>
+	<key>NSLocationUsageDescription</key>
+	<string>macOS shows Wi-Fi network names only to apps with location access. FastGlance uses it just to show the name of your network; your location is never read or sent anywhere.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>macOS shows Wi-Fi network names only to apps with location access. FastGlance uses it just to show the name of your network; your location is never read or sent anywhere.</string>
 </dict>
 </plist>

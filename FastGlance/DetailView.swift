@@ -69,6 +69,17 @@ struct DeviceCard: View {
             VStack(alignment: .leading, spacing: 18) {
                 header
 
+                if let warning = device.warning {
+                    Label {
+                        Text(warning).fixedSize(horizontal: false, vertical: true)
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+                }
+
                 if !device.batteries.isEmpty {
                     GroupBox("Battery") {
                         HStack(spacing: 24) {

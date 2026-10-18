@@ -16,6 +16,7 @@ import AVFoundation
     private let selection = DetailSelection()
     private var status: StatusController!
     private var windows: [String: NSWindow] = [:]
+    private lazy var lidGuard = LidGuard(disks: hub.disks)
 
     func applicationDidFinishLaunching(_ note: Notification) {
         Prefs.register()
@@ -36,6 +37,7 @@ import AVFoundation
             MainActor.assumeIsolated { self?.applyHotkeys() }
         }
         hub.start()
+        lidGuard.start()
     }
 
     private func applyHotkeys() {
