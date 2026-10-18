@@ -82,6 +82,10 @@ struct Device: Identifiable, Hashable {
     var info: [InfoRow] = []
     var raw: [InfoRow] = []
     var lastConnected: Date? = nil
+    /// Overrides the kind's icon, e.g. a microphone among audio devices.
+    var symbol: String? = nil
+
+    var icon: String { symbol ?? kind.symbol }
 
     /// The AirPods case is excluded: a low case shouldn't raise alerts while the buds are full.
     var lowestBattery: Int? { batteries.filter { $0.label != "Case" }.map(\.percent).min() }

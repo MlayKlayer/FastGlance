@@ -16,7 +16,7 @@ enum Prefs {
     static func register() {
         UserDefaults.standard.register(defaults: [
             iconMode: "lowest", notifyConnections: true, notifyBattery: true, batteryThreshold: 20,
-            mutedKinds: "computer,media,network,phone,router,smartHome,watch", hiddenKinds: "",
+            mutedKinds: "camera,computer,media,network,phone,router,smartHome,watch", hiddenKinds: "",
             networkScan: true, networkScanInterval: 60.0, hotkeys: true,
         ])
     }
@@ -146,14 +146,21 @@ enum Prefs {
 
     private func savePins() { UserDefaults.standard.set(pins, forKey: Prefs.pins) }
 
-    /// Pins whose device and action currently exist, in pin order.
-    var pinnedActions: [(device: Device, action: DeviceAction)] {
-        pins.compactMap { pin in
-            guard let deviceID = pin.split(separator: "|").first.map(String.init),
-                  let device = devices.first(where: { $0.id == deviceID }),
-                  let action = actions(for: device).first(where: { $0.id == pin }) else { return nil }
-            return (device, action)
-        }
+    /// Pins that can run right now. `slot` is the pin's position in `pins`, which is what ⌃⌥N and option-click use,
+    /// so a pin that can't run at the moment never shifts the others onto the wrong shortcut.
+    var pinnedActions: [(slot: Int, device: Device, action: DeviceAction)] {
+        pins.indices.compactMap { slot in pinnedAction(slot: slot).map { (slot, $0.device, $0.action) } }
+    }
+
+    func pinnedAction(slot: Int) -> (device: Device, action: DeviceAction)? {
+        Self.resolve(pin: pins.indices.contains(slot) ? pins[slot] : nil, devices: devices, actions: actions(for:))
+    }
+
+    static func resolve(pin: String?, devices: [Device], actions: (Device) -> [DeviceAction]) -> (device: Device, action: DeviceAction)? {
+        guard let pin, let deviceID = pin.split(separator: "|").first.map(String.init),
+              let device = devices.first(where: { $0.id == deviceID }),
+              let action = actions(device).first(where: { $0.id == pin }) else { return nil }
+        return (device, action)
     }
 }
 

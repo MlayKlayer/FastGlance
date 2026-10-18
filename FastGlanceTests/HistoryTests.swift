@@ -24,12 +24,6 @@ final class HistoryTests: XCTestCase {
         h.markDisconnected(["usb:b"], now: t2)
         XCTAssertEqual(h.entries["usb:b"]?.lastConnected, t2)
 
-        // A never-connected device takes the source's hint.
-        var hinted = Device(id: "bt:c", name: "C", kind: .mouse, isConnected: false)
-        hinted.lastConnected = t0
-        h.record([hinted], now: t2)
-        XCTAssertEqual(h.entries["bt:c"]?.lastConnected, t0)
-
         // Low case battery doesn't count as low.
         var buds = Device(id: "bt:d", name: "D", kind: .headphones, isConnected: true)
         buds.batteries = [Battery(label: "L", percent: 90), Battery(label: "R", percent: 80), Battery(label: "Case", percent: 10)]

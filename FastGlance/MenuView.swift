@@ -52,8 +52,8 @@ struct MenuView: View {
             if !pinned.isEmpty && query.isEmpty {
                 SectionTitle("Pinned")
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 6)], spacing: 6) {
-                    ForEach(Array(pinned.enumerated()), id: \.element.action.id) { i, item in
-                        PinChip(device: item.device, action: item.action, shortcut: hotkeys && i < 9 ? "⌃⌥\(i + 1)" : nil)
+                    ForEach(pinned, id: \.action.id) { item in
+                        PinChip(device: item.device, action: item.action, shortcut: hotkeys && item.slot < 9 ? "⌃⌥\(item.slot + 1)" : nil)
                     }
                 }
             }
@@ -172,7 +172,7 @@ struct DeviceRow: View {
         let isOpen = expanded == device.id
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
-                Image(systemName: device.kind.symbol)
+                Image(systemName: device.icon)
                     .frame(width: 22)
                     .foregroundStyle(device.isConnected ? Color.accentColor : .secondary)
                 VStack(alignment: .leading, spacing: 1) {

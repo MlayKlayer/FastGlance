@@ -46,7 +46,7 @@ enum Util {
     }
 
     static func ago(_ date: Date?) -> String {
-        guard let date else { return "Never connected" }
+        guard let date else { return "Not seen connected yet" }
         if Date().timeIntervalSince(date) < 60 { return "Last seen just now" }
         let f = RelativeDateTimeFormatter()
         f.unitsStyle = .full

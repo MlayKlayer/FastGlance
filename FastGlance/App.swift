@@ -46,7 +46,7 @@ import AVFoundation
         if id == Hotkeys.micID {
             hub.audio.toggleMic()
             Notifier.shared.post(hub.audio.isMicMuted ? "Microphone muted" : "Microphone on", "")
-        } else if let pin = hub.pinnedActions.dropFirst(Int(id) - 1).first {
+        } else if let pin = hub.pinnedAction(slot: Int(id) - 1) {
             pin.action.run()
         } else {
             NSSound.beep()

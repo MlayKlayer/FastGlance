@@ -122,7 +122,7 @@ import CoreGraphics
                 self?.setMirror(d, on: !mirrored)
             })
         }
-        if ddc[d] != nil {
+        if currentInput(d) != nil {  // a successful read, not just an AV service: DDC really works
             for input in DDC.inputs where input.code != currentInput(d) {
                 out.append(DeviceAction(device, "input\(input.code)", "Switch to \(input.name)", "arrow.left.arrow.right.square") { [weak self] in
                     self?.ddcSet(d, DDC.input, input.code)
@@ -147,7 +147,7 @@ import CoreGraphics
         }
         out += [ddcSlider(device, d, DDC.contrast, "Contrast", "circle.lefthalf.filled"),
                 ddcSlider(device, d, DDC.volume, "Speaker volume", "speaker.wave.2")].compactMap { $0 }
-        if ddc[d] != nil {
+        if currentInput(d) != nil {
             out.append(DeviceControl(id: "\(device.id)|input", title: "Input", symbol: "arrow.left.arrow.right.square", kind: .picker(
                 options: DDC.inputs.map(\.name),
                 get: { [weak self] in DDC.inputs.firstIndex { $0.code == self?.currentInput(d) } ?? 0 },
