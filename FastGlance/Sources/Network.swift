@@ -249,14 +249,14 @@ import Darwin
             if h.types.contains("_ssh._tcp.") {
                 out.append(DeviceAction(device, "ssh", "SSH in Terminal", "terminal") { Util.open("ssh://\(target)") })
             }
-            out.append(DeviceAction(device, "ping", "Ping", "waveform.path.ecg") { Self.ping(ip, name: device.name) })
+            out.append(DeviceAction(device, "ping", "Ping", "waveform.path.ecg") { Self.ping(ip, device) })
             out.append(DeviceAction(device, "copyip", "Copy IP Address", "doc.on.doc") { Util.copy(ip) })
         }
         if let mac {
             let wake = DeviceAction(device, "wake", "Wake (Wake-on-LAN)", "power") {
                 guard let packet = Self.magicPacket(mac) else { return }
                 DispatchQueue.global().async { Self.udpSend(packet, to: Self.broadcastTargets(), port: 9, broadcast: true) }
-                Notifier.shared.post("Wake signal sent", device.name)
+                Notifier.shared.report(device.id, device.name, "Wake signal sent", notify: true)
             }
             // Offline: waking is the point. Online: it's just one more option.
             if device.isConnected { out.append(wake) } else { out.insert(wake, at: 0) }
@@ -265,15 +265,18 @@ import Darwin
         return out
     }
 
-    static func ping(_ ip: String, name: String) {
+    static func ping(_ ip: String, _ device: Device) {
+        let (id, name) = (device.id, device.name)
+        Notifier.shared.report(id, name, "Pinging…")
         Util.run("/sbin/ping", ["-c", "3", "-t", "5", ip]) { data in
             let text = String(decoding: data, as: UTF8.self)
             // "round-trip min/avg/max/stddev = 1.1/2.2/3.3/0.4 ms"
             if let line = text.split(separator: "\n").first(where: { $0.contains("min/avg/max") }),
                let avg = line.split(separator: "=").last?.split(separator: "/").dropFirst().first {
-                Notifier.shared.post("\(name) replied", "Average \(avg.trimmingCharacters(in: .whitespaces)) ms")
+                Notifier.shared.report(id, name, "Replied · \(avg.trimmingCharacters(in: .whitespaces)) ms", notify: true)
             } else {
-                Notifier.shared.post("\(name) didn't reply", "Some devices ignore ping even when online.")
+                // Some devices ignore ping even when online.
+                Notifier.shared.report(id, name, "No reply to ping", failed: true) { ping(ip, device) }
             }
         }
     }

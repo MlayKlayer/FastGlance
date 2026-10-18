@@ -67,7 +67,7 @@ import AppKit
     func actions(for device: Device) -> [DeviceAction] {
         guard let url = urls[device.id] else { return [] }
         return [
-            DeviceAction(device, "eject", "Eject", "eject") { [weak self] in self?.eject(url, name: device.name) },
+            DeviceAction(device, "eject", "Eject", "eject") { [weak self] in self?.eject(url, device) },
             DeviceAction(device, "open", "Open in Finder", "folder") { NSWorkspace.shared.open(url) },
             DeviceAction(device, "copypath", "Copy Path", "doc.on.doc") { Util.copy(url.path) },
         ]
@@ -85,16 +85,25 @@ import AppKit
     }
 
     func ejectAll() {
-        for d in devices { if let url = urls[d.id] { eject(url, name: d.name) } }
+        for d in devices { if let url = urls[d.id] { eject(url, d) } }
     }
 
-    private func eject(_ url: URL, name: String) {
+    private func eject(_ url: URL, _ d: Device) {
+        let (id, name) = (d.id, d.name)
+        Notifier.shared.report(id, name, "Ejecting…")
         DispatchQueue.global(qos: .userInitiated).async {
+            let message: String?
             do {
                 try NSWorkspace.shared.unmountAndEjectDevice(at: url)
+                message = nil
             } catch {
-                DispatchQueue.main.async {
-                    Notifier.shared.post("Couldn't eject \(name)", error.localizedDescription)
+                message = error.localizedDescription
+            }
+            DispatchQueue.main.async {
+                if let message {
+                    Notifier.shared.report(id, name, "Couldn't eject: \(message)", failed: true) { [weak self] in self?.eject(url, d) }
+                } else {
+                    Notifier.shared.report(id, name, "Ejected · safe to unplug")
                 }
             }
         }

@@ -125,7 +125,7 @@ import Darwin
         }
         if let gateway {
             out.append(DeviceAction(device, "ping", hotspot ? "Ping iPhone" : "Ping Router", "waveform.path.ecg") {
-                NetworkSource.ping(gateway, name: device.name)
+                NetworkSource.ping(gateway, device)
             })
         }
         if device.icon != "network" {

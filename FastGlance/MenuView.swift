@@ -7,20 +7,44 @@ struct MenuView: View {
 
     @State private var query = ""
     @State private var expanded: String?
+    @State private var selected = 0
     @AppStorage("showOffline") private var showOffline = false
     @AppStorage(Prefs.hiddenKinds) private var hiddenRaw = ""
     @AppStorage(Prefs.hotkeys) private var hotkeys = true
 
-    private var visible: [Device] {
+    private var shown: [Device] {
         let hidden = Set(hiddenRaw.split(separator: ",").map(String.init))
-        return hub.devices.filter { !hidden.contains($0.kind.rawValue) && (query.isEmpty || $0.name.localizedCaseInsensitiveContains(query)) }
+        return hub.devices.filter { !hidden.contains($0.kind.rawValue) }
+    }
+
+    private var visible: [Device] {
+        let words = Search.words(query)
+        return shown.filter { Search.matches($0, words) }
+    }
+
+    private var results: [(device: Device, action: DeviceAction)] {
+        let words = Search.words(query)
+        guard !words.isEmpty else { return [] }
+        return Array(Search.actions(words, in: shown.map { ($0, hub.actions(for: $0)) }).prefix(6))
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
-            TextField("Search devices", text: $query)
+            TextField("Search devices and actions", text: $query)
                 .textFieldStyle(.roundedBorder)
+                .onChange(of: query) { selected = 0 }
+                .onSubmit {
+                    let r = results
+                    if r.indices.contains(selected) { r[selected].action.run() }
+                }
+                .onKeyPress(.downArrow) { move(1) }
+                .onKeyPress(.upArrow) { move(-1) }
+                .onKeyPress(.escape) {
+                    guard !query.isEmpty else { return .ignored }  // empty field: let the popover close
+                    query = ""
+                    return .handled
+                }
             ViewThatFits(in: .vertical) {
                 content
                 ScrollView { content }.scrollIndicators(.automatic)
@@ -29,6 +53,13 @@ struct MenuView: View {
         }
         .padding(12)
         .frame(width: 370)
+    }
+
+    private func move(_ step: Int) -> KeyPress.Result {
+        let n = results.count
+        guard n > 0 else { return .ignored }
+        selected = (selected + step + n) % n
+        return .handled
     }
 
     private var header: some View {
@@ -58,8 +89,16 @@ struct MenuView: View {
                 }
             }
 
+            let found = results
+            if !found.isEmpty {
+                SectionTitle("Actions")
+                ForEach(Array(found.enumerated()), id: \.element.action.id) { i, item in
+                    PinChip(device: item.device, action: item.action, shortcut: i == selected ? "↩" : nil, highlighted: i == selected)
+                }
+            }
+
             let online = visible.filter(\.isConnected)
-            if online.isEmpty {
+            if online.isEmpty && found.isEmpty {
                 Text(query.isEmpty ? "No devices connected" : "No matches").foregroundStyle(.secondary).font(.callout)
             }
             ForEach(DeviceKind.grouped(online), id: \.kind) { kind, devices in
@@ -91,6 +130,39 @@ struct MenuView: View {
     }
 }
 
+/// Every word of the query has to appear somewhere: "eject ssd", "192.168.1", "headphones".
+enum Search {
+    static func words(_ query: String) -> [String] {
+        query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
+    }
+
+    /// Name, category and details (addresses, serials).
+    static func text(_ d: Device) -> String {
+        ([d.name, d.kind.title] + d.info.map(\.value)).joined(separator: " ").lowercased()
+    }
+
+    static func matches(_ d: Device, _ words: [String]) -> Bool {
+        let t = text(d)
+        return words.allSatisfy(t.contains)
+    }
+
+    /// Actions whose title has at least one of the words, with the rest found in the title or the device.
+    /// Titles where a word starts a title word come first: "connect" ranks Connect above Disconnect.
+    static func actions(_ words: [String], in items: [(Device, [DeviceAction])]) -> [(device: Device, action: DeviceAction)] {
+        var strong: [(device: Device, action: DeviceAction)] = [], weak = strong
+        for (d, actions) in items {
+            let dt = text(d)
+            for a in actions {
+                let title = a.title.lowercased()
+                guard words.contains(where: title.contains), words.allSatisfy({ title.contains($0) || dt.contains($0) }) else { continue }
+                let titleWords = title.split { !$0.isLetter && !$0.isNumber }
+                if words.contains(where: { w in titleWords.contains { $0.hasPrefix(w) } }) { strong.append((d, a)) } else { weak.append((d, a)) }
+            }
+        }
+        return strong + weak
+    }
+}
+
 struct SectionTitle: View {
     let text: String
     init(_ text: String) { self.text = text }
@@ -117,6 +189,7 @@ struct PinChip: View {
     let device: Device
     let action: DeviceAction
     var shortcut: String? = nil
+    var highlighted = false
     var body: some View {
         Button(action: action.run) {
             HStack(spacing: 6) {
@@ -129,7 +202,8 @@ struct PinChip: View {
                 if let shortcut { Text(shortcut).font(.caption2.monospaced()).foregroundStyle(.tertiary) }
             }
             .padding(.horizontal, 8).padding(.vertical, 5)
-            .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 7))
+            .background(highlighted ? AnyShapeStyle(Color.accentColor.opacity(0.25)) : AnyShapeStyle(.quaternary.opacity(0.6)),
+                        in: RoundedRectangle(cornerRadius: 7))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -158,6 +232,7 @@ struct DeviceRow: View {
     @Binding var expanded: String?
     let openDetail: (String?) -> Void
     @State private var hover = false
+    @ObservedObject private var notifier = Notifier.shared
 
     private var subtitle: String {
         device.isConnected ? (device.status ?? "Connected") : Util.ago(device.lastConnected)
@@ -173,7 +248,15 @@ struct DeviceRow: View {
                     .foregroundStyle(device.isConnected ? Color.accentColor : .secondary)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(device.name).lineLimit(1)
-                    Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    if let status = notifier.statuses[device.id] {
+                        HStack(spacing: 6) {
+                            Text(status.text).foregroundStyle(status.failed ? .red : .secondary).lineLimit(1).help(status.text)
+                            if let retry = status.retry { Button("Retry", action: retry).buttonStyle(.link) }
+                        }
+                        .font(.caption)
+                    } else {
+                        Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    }
                 }
                 Spacer(minLength: 4)
                 if let warning = device.warning {
