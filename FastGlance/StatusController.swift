@@ -74,16 +74,17 @@ import SwiftUI
         guard let button = item.button else { return }
         let d = UserDefaults.standard
         let connected = hub.devices.filter(\.isConnected)
+        let powered = connected.filter { $0.kind != .printer }  // ink isn't a battery
         let threshold = d.integer(forKey: Prefs.batteryThreshold)
 
         let dot: NSColor? = hub.audio.isMicMuted ? .systemRed
-            : connected.contains { ($0.lowestBattery ?? 100) <= threshold } ? .systemOrange : nil
+            : powered.contains { ($0.lowestBattery ?? 100) <= threshold } ? .systemOrange : nil
         button.image = Self.icon(dot: dot)
 
         var text = ""
         switch d.string(forKey: Prefs.iconMode) {
         case "lowest":
-            if let low = connected.compactMap(\.lowestBattery).min() { text = "\(low)%" }
+            if let low = powered.compactMap(\.lowestBattery).min() { text = "\(low)%" }
         case "device":
             let id = d.string(forKey: Prefs.iconDeviceID)
             if let low = connected.first(where: { $0.id == id })?.lowestBattery { text = "\(low)%" }

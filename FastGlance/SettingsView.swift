@@ -10,6 +10,8 @@ struct SettingsView: View {
     @AppStorage(Prefs.batteryThreshold) private var threshold = 20
     @AppStorage(Prefs.hiddenKinds) private var hiddenRaw = ""
     @AppStorage(Prefs.mutedKinds) private var mutedRaw = ""
+    @AppStorage(Prefs.networkScan) private var networkScan = true
+    @AppStorage(Prefs.networkScanInterval) private var scanInterval = 60.0
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
     @State private var confirmClear = false
@@ -48,6 +50,21 @@ struct SettingsView: View {
                     KindToggles(raw: $mutedRaw)
                 }
                 .disabled(!notifyConnections)
+            }
+
+            Section {
+                Toggle("Scan local network", isOn: $networkScan)
+                Picker("Scan every", selection: $scanInterval) {
+                    Text("30 seconds").tag(30.0)
+                    Text("1 minute").tag(60.0)
+                    Text("5 minutes").tag(300.0)
+                }
+                .disabled(!networkScan)
+            } header: {
+                Text("Local network")
+            } footer: {
+                Text("Bonjour devices always show up. Scanning also finds devices that don't advertise themselves. Everything stays on this Mac.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
 
             Section("Devices") {

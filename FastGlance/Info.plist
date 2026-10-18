@@ -40,6 +40,10 @@
 		<string>_ssh._tcp</string>
 		<string>_http._tcp</string>
 		<string>_companion-link._tcp</string>
+		<string>_rfb._tcp</string>
+		<string>_sonos._tcp</string>
+		<string>_spotify-connect._tcp</string>
+		<string>_matter._tcp</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>FastGlance shows a camera preview when you ask for it.</string>

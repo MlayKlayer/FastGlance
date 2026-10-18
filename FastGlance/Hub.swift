@@ -9,11 +9,14 @@ enum Prefs {
     static let hiddenKinds = "hiddenKinds"      // comma-separated DeviceKind raw values
     static let mutedKinds = "notifyMutedKinds"
     static let pins = "pins"                    // [String] of DeviceAction ids
+    static let networkScan = "networkScan"
+    static let networkScanInterval = "networkScanInterval"  // seconds
 
     static func register() {
         UserDefaults.standard.register(defaults: [
             iconMode: "lowest", notifyConnections: true, notifyBattery: true, batteryThreshold: 20,
-            mutedKinds: "phone,watch,computer", hiddenKinds: "",
+            mutedKinds: "computer,media,network,phone,router,smartHome,watch", hiddenKinds: "",
+            networkScan: true, networkScanInterval: 60.0,
         ])
     }
 
@@ -36,6 +39,7 @@ enum Prefs {
     let audio = AudioSource()
     let disks = DiskSource()
     let bluetooth: BluetoothSource
+    let network = NetworkSource()
     private let sources: [DeviceSource]
     private var history = DeviceHistory.load()
     private var refreshQueued = false
@@ -43,7 +47,11 @@ enum Prefs {
 
     init() {
         bluetooth = BluetoothSource(audio: audio)
-        sources = [bluetooth, audio, USBSource(), disks, DisplaySource()]
+        let usb = USBSource()
+        let printers = PrinterSource(usb: usb, network: network)
+        usb.claimedSerials = { [weak printers] in printers?.usbSerials ?? [] }
+        network.claimedServiceNames = { [weak printers] in printers?.dnssdNames ?? [] }
+        sources = [bluetooth, audio, usb, disks, DisplaySource(), printers, network]
     }
 
     func start() {
