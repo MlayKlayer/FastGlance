@@ -1,6 +1,7 @@
 import Foundation
 
 enum DeviceKind: String, Codable, CaseIterable, Identifiable {
+    case internet
     case headphones, speaker, mouse, keyboard, trackpad, gamepad, phone, watch, computer, bluetooth
     case audio, storage, display, camera, usb
     case printer, media, smartHome, router, network
@@ -9,6 +10,7 @@ enum DeviceKind: String, Codable, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .internet: "Internet"
         case .headphones: "Headphones"
         case .speaker: "Speakers"
         case .mouse: "Mice"
@@ -34,6 +36,7 @@ enum DeviceKind: String, Codable, CaseIterable, Identifiable {
 
     var symbol: String {
         switch self {
+        case .internet: "globe"
         case .headphones: "headphones"
         case .speaker: "hifispeaker"
         case .mouse: "computermouse"
@@ -84,6 +87,8 @@ struct Device: Identifiable, Hashable {
     var lastConnected: Date? = nil
     /// Overrides the kind's icon, e.g. a microphone among audio devices.
     var symbol: String? = nil
+    /// Something the user should fix, e.g. a fast drive stuck on a USB 2 cable.
+    var warning: String? = nil
 
     var icon: String { symbol ?? kind.symbol }
 

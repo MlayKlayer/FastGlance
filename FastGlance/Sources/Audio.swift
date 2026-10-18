@@ -117,7 +117,7 @@ enum CA {
         return Device(id: "audio:\(a.uid)", name: a.name, kind: .audio, isConnected: true,
                       status: roles.isEmpty ? "Available" : roles.joined(separator: " · "),
                       info: info, raw: [InfoRow("UID", a.uid), InfoRow("Object ID", "\(a.id)")],
-                      symbol: a.hasOutput ? nil : "mic")
+                      symbol: a.hasInput && !a.hasOutput ? "mic" : nil)
     }
 
     private func dev(for device: Device) -> AudioDev? {

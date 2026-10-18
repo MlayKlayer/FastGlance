@@ -5,6 +5,7 @@ import Foundation
     static let shared = Notifier()
 
     private var lowWarned = Set<String>()
+    private var linkWarned = Set<String>()
     private var quietUntil = Date().addingTimeInterval(6)  // sources report their initial state at launch
 
     func start() {
@@ -35,6 +36,11 @@ import Foundation
             for dev in old where dev.isConnected && !isConnected.contains(dev.id) && !muted.contains(dev.kind) {
                 post("\(dev.name) disconnected", dev.kind.title)
             }
+        }
+
+        // Slow-link warnings: once per device per launch, only for devices plugged in while we're running.
+        for dev in new where dev.isConnected && dev.warning != nil && !wasConnected.contains(dev.id) && Date() > quietUntil {
+            if linkWarned.insert(dev.id).inserted { post("\(dev.name) is running slow", dev.warning!) }
         }
 
         let threshold = d.integer(forKey: Prefs.batteryThreshold)

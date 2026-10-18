@@ -5,6 +5,7 @@ import AppKit
     var onChange: (() -> Void)?
     private(set) var devices: [Device] = []
     private var urls: [String: URL] = [:]
+    private var localIDs: Set<String> = []
 
     private let keys: [URLResourceKey] = [.volumeNameKey, .volumeUUIDStringKey, .volumeIsInternalKey, .volumeIsEjectableKey,
                                           .volumeIsRemovableKey, .volumeIsLocalKey, .volumeTotalCapacityKey,
@@ -21,6 +22,7 @@ import AppKit
     func reload() {
         var next: [Device] = []
         var nextURLs: [String: URL] = [:]
+        var nextLocal: Set<String> = []
         for url in FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: keys, options: [.skipHiddenVolumes]) ?? [] {
             guard let v = try? url.resourceValues(forKeys: Set(keys)) else { continue }
             let isInternal = v.volumeIsInternal ?? false
@@ -30,6 +32,14 @@ import AppKit
             let total = v.volumeTotalCapacity ?? 0
             let free = v.volumeAvailableCapacity ?? 0
             nextURLs[id] = url
+            if v.volumeIsLocal ?? true { nextLocal.insert(id) }
+            let doctor = USBDoctor.bsdName(forVolume: url).flatMap(USBDoctor.report(bsdName:))
+            var extra: [InfoRow] = []
+            if let doctor {
+                extra.append(InfoRow("Connection", doctor.link))
+                if !doctor.via.isEmpty { extra.append(InfoRow("Through", doctor.via.joined(separator: " → "))) }
+                if let note = doctor.note { extra.append(InfoRow("Note", note)) }
+            }
             next.append(Device(
                 id: id, name: v.volumeName ?? url.lastPathComponent, kind: .storage, isConnected: true,
                 status: total > 0 ? "\(Util.bytes(free)) free of \(Util.bytes(total))" : nil,
@@ -38,10 +48,12 @@ import AppKit
                        InfoRow("Capacity", Util.bytes(total)),
                        InfoRow("Available", Util.bytes(free)),
                        InfoRow("Location", (v.volumeIsLocal ?? true) ? "Local" : "Network"),
-                       InfoRow("Removable", (v.volumeIsRemovable ?? false) ? "Yes" : "No")],
-                raw: [InfoRow("UUID", v.volumeUUIDString ?? "—")]))
+                       InfoRow("Removable", (v.volumeIsRemovable ?? false) ? "Yes" : "No")] + extra,
+                raw: [InfoRow("UUID", v.volumeUUIDString ?? "—")],
+                warning: doctor?.warning))
         }
         urls = nextURLs
+        localIDs = nextLocal
         if next != devices { devices = next; onChange?() }
     }
 
@@ -62,6 +74,11 @@ import AppKit
     }
 
     var hasEjectable: Bool { !urls.isEmpty }
+
+    /// Mounted external volumes on this Mac (not network shares), for unmounting before sleep.
+    var localVolumes: [(url: URL, name: String)] {
+        devices.compactMap { d in localIDs.contains(d.id) ? urls[d.id].map { ($0, d.name) } : nil }
+    }
 
     func ejectAll() {
         for d in devices { if let url = urls[d.id] { eject(url, name: d.name) } }

@@ -13,7 +13,16 @@ import CoreGraphics
     private var ddcPending: [String: UInt16] = [:]
     private let ddcQueue = DispatchQueue(label: "FastGlance.ddc")
 
+    // Brightness sync: external monitors follow the built-in display.
+    private var syncTimer: Timer?
+    private var lastMaster: Float?
+    private var lastWritten: [CGDirectDisplayID: Double] = [:]
+    static let offsets = [-0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3]
+
     func start() {
+        syncTimer = .scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.syncBrightness() }
+        }
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.reload() }
         }
@@ -62,11 +71,13 @@ import CoreGraphics
     }
 
     private func refreshDDC() {
-        // displays and AV services are paired by order, exact with one external monitor.
-        // With several, match on EDID (vendor/product in the registry) if they get swapped.
         let externals = Self.online().filter { CGDisplayIsBuiltin($0) == 0 }.sorted { CGDisplayUnitNumber($0) < CGDisplayUnitNumber($1) }
         let services = DDC.externalServices()
-        ddc = Dictionary(uniqueKeysWithValues: zip(externals, services).map { ($0, $1) })
+        let ids = externals.map { DDC.Identity(vendor: Int(CGDisplayVendorNumber($0)), product: Int(CGDisplayModelNumber($0)),
+                                               serial: Int(CGDisplaySerialNumber($0))) }
+        ddc = Dictionary(uniqueKeysWithValues: DDC.pair(displays: ids, services: services.map(\.identity)).map {
+            (externals[$0.key], services[$0.value].ref)
+        })
         let targets = ddc
         ddcQueue.async {
             var values: [CGDirectDisplayID: [UInt8: (current: UInt16, max: UInt16)]] = [:]
@@ -79,6 +90,7 @@ import CoreGraphics
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     self.ddcValues = snapshot
+                    self.lastMaster = nil  // push the current brightness to newly found monitors
                     self.onChange?()
                 }
             }
@@ -104,6 +116,30 @@ import CoreGraphics
         return DeviceControl(id: "\(device.id)|ddc\(code)", title: title, symbol: symbol, kind: .slider(
             get: { [weak self] in Double(self?.ddcValues[d]?[code]?.current ?? v.current) / Double(v.max) },
             set: { [weak self] in self?.ddcSet(d, code, UInt16(($0 * Double(v.max)).rounded())) }))
+    }
+
+    private func offset(_ deviceID: String) -> Double {
+        UserDefaults.standard.double(forKey: "brightnessOffset.\(deviceID)")
+    }
+
+    /// Polls the built-in brightness (cheap) and mirrors real changes, rate-limited so DDC writes stay rare.
+    private func syncBrightness() {
+        guard ids.count > 1, UserDefaults.standard.bool(forKey: Prefs.syncBrightness),
+              let builtin = ids["display:builtin"], let master = DisplayBrightness.get(builtin) else { return }
+        if let last = lastMaster, abs(last - master) < 0.01 { return }
+        lastMaster = master
+        for (key, d) in ids where d != builtin {
+            let target = min(max(Double(master) + offset(key), 0), 1)
+            if let written = lastWritten[d], abs(written - target) < 0.02 { continue }
+            if DisplayBrightness.get(d) != nil {
+                DisplayBrightness.set(d, Float(target))
+            } else if let v = ddcValues[d]?[DDC.brightness], v.max > 0 {
+                ddcSet(d, DDC.brightness, UInt16((target * Double(v.max)).rounded()))
+            } else {
+                continue
+            }
+            lastWritten[d] = target
+        }
     }
 
     private func currentInput(_ d: CGDirectDisplayID) -> UInt16? {
@@ -144,6 +180,18 @@ import CoreGraphics
                 set: { DisplayBrightness.set(d, Float($0)) })))
         } else if let c = ddcSlider(device, d, DDC.brightness, "Brightness", "sun.max") {
             out.append(c)
+        }
+        let canSync = CGDisplayIsBuiltin(d) == 0 && (DisplayBrightness.get(d) != nil || ddcValues[d]?[DDC.brightness] != nil)
+        if canSync && UserDefaults.standard.bool(forKey: Prefs.syncBrightness) {
+            let key = "brightnessOffset.\(device.id)"
+            out.append(DeviceControl(id: "\(device.id)|syncoffset", title: "Sync offset", symbol: "sun.max.trianglebadge.exclamationmark", kind: .picker(
+                options: Self.offsets.map { $0 == 0 ? "Same as Mac" : String(format: "%+.0f%%", $0 * 100) },
+                get: { Self.offsets.firstIndex(of: UserDefaults.standard.double(forKey: key)) ?? 3 },
+                set: { [weak self] in
+                    UserDefaults.standard.set(Self.offsets[$0], forKey: key)
+                    self?.lastMaster = nil
+                    self?.lastWritten[d] = nil
+                })))
         }
         out += [ddcSlider(device, d, DDC.contrast, "Contrast", "circle.lefthalf.filled"),
                 ddcSlider(device, d, DDC.volume, "Speaker volume", "speaker.wave.2")].compactMap { $0 }

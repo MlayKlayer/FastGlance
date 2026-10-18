@@ -12,6 +12,8 @@ struct SettingsView: View {
     @AppStorage(Prefs.mutedKinds) private var mutedRaw = ""
     @AppStorage(Prefs.networkScan) private var networkScan = true
     @AppStorage(Prefs.hotkeys) private var hotkeys = true
+    @AppStorage(Prefs.unmountOnLidClose) private var unmountOnLidClose = true
+    @AppStorage(Prefs.syncBrightness) private var syncBrightness = true
     @AppStorage(Prefs.networkScanInterval) private var scanInterval = 60.0
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
@@ -72,6 +74,24 @@ struct SettingsView: View {
                 Text("Local network")
             } footer: {
                 Text("Bonjour devices always show up. Scanning also finds devices that don't advertise themselves. Everything stays on this Mac.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
+            Section {
+                Toggle("Unmount external disks when the lid closes", isOn: $unmountOnLidClose)
+            } header: {
+                Text("Disks")
+            } footer: {
+                Text("Before the Mac sleeps from closing the lid, disks are safely unmounted (never forced), so you can unplug them without a warning. If a disk is still connected when the Mac wakes, it mounts again. With an external display and the lid closed, the Mac stays awake and disks are left alone.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
+            Section {
+                Toggle("Match external displays to this Mac's brightness", isOn: $syncBrightness)
+            } header: {
+                Text("Displays")
+            } footer: {
+                Text("External monitors follow the built-in display, including automatic brightness. Fine-tune each monitor with its offset in the display's controls.")
                     .font(.caption).foregroundStyle(.secondary)
             }
 

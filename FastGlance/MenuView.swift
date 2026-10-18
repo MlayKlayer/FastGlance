@@ -180,6 +180,9 @@ struct DeviceRow: View {
                     Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 4)
+                if let warning = device.warning {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).help(warning)
+                }
                 if !device.batteries.isEmpty { BatteryText(batteries: device.batteries) }
                 if let primary = actions.first {
                     Button(action: primary.run) { Image(systemName: primary.symbol).frame(width: 22, height: 22) }
@@ -243,6 +246,10 @@ struct ExpandedRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if let warning = device.warning {
+                Label(warning, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+            }
             if let used = hub.disks.usage(device) {
                 ProgressView(value: used).tint(used > 0.9 ? .orange : .accentColor)
             }
