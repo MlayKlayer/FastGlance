@@ -33,7 +33,6 @@ import Darwin
     private var hosts: [String: Host] = [:]        // device id -> host, for actions
     private var lastSweep = Date.distantPast
     private var sweeping = false
-    private var timer: Timer?
 
     private let ownHostName = ProcessInfo.processInfo.hostName.lowercased()
 
@@ -45,7 +44,7 @@ import Darwin
             b.searchForServices(ofType: type, inDomain: "local.")
             browsers.append(b)
         }
-        timer = .scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
+        _ = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.sweepIfDue() }
         }
         sweepIfDue()
@@ -322,8 +321,9 @@ import Darwin
         return nil
     }
 
-    nonisolated static func ownIPv4s() -> Set<String> {
-        var out = Set<String>()
+    /// Every IPv4 address on this Mac with its interface name.
+    nonisolated static func interfaceIPv4s() -> [(iface: String, ip: String)] {
+        var out: [(String, String)] = []
         var list: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&list) == 0 else { return out }
         defer { freeifaddrs(list) }
@@ -332,11 +332,13 @@ import Darwin
             defer { cur = ifa.ifa_next }
             if let addr = ifa.ifa_addr, addr.pointee.sa_family == sa_family_t(AF_INET) {
                 var a = addr.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { $0.pointee.sin_addr }
-                out.insert(ntop(&a))
+                out.append((String(cString: ifa.ifa_name), ntop(&a)))
             }
         }
         return out
     }
+
+    nonisolated static func ownIPv4s() -> Set<String> { Set(interfaceIPv4s().map(\.ip)) }
 
     /// Every host address in the subnet, capped at a /22 around this Mac so big networks stay cheap.
     nonisolated static func subnetHosts(ip: UInt32, mask: UInt32) -> [String] {

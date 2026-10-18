@@ -62,7 +62,7 @@ struct MenuView: View {
             if online.isEmpty {
                 Text(query.isEmpty ? "No devices connected" : "No matches").foregroundStyle(.secondary).font(.callout)
             }
-            ForEach(groups(online), id: \.0) { kind, devices in
+            ForEach(DeviceKind.grouped(online), id: \.kind) { kind, devices in
                 SectionTitle(kind.title)
                 ForEach(devices) { DeviceRow(device: $0, expanded: $expanded, openDetail: openDetail) }
             }
@@ -88,10 +88,6 @@ struct MenuView: View {
                 }
             }
         }
-    }
-
-    private func groups(_ devices: [Device]) -> [(DeviceKind, [Device])] {
-        Dictionary(grouping: devices, by: \.kind).sorted { $0.key.order < $1.key.order }.map { ($0.key, $0.value) }
     }
 }
 

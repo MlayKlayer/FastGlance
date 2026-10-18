@@ -48,7 +48,7 @@ private func drain(_ it: io_iterator_t) {
         var serials = Set<String>()
         let claimed = claimedSerials()
         while case let service = IOIteratorNext(iter), service != 0 {
-            let p = Self.props(service)
+            let p = USBDoctor.props(service)
             let serial = (p["USB Serial Number"] as? String) ?? (p["kUSBSerialNumberString"] as? String)
             if let serial { serials.insert(serial) }
             if serial.map({ !claimed.contains($0) }) ?? true, let d = device(service, p) { next.append(d) }
@@ -59,12 +59,6 @@ private func drain(_ it: io_iterator_t) {
         if next != devices || serialsChanged { devices = next; onChange?() }
     }
 
-    private static func props(_ entry: io_registry_entry_t) -> [String: Any] {
-        var cf: Unmanaged<CFMutableDictionary>?
-        guard IORegistryEntryCreateCFProperties(entry, &cf, kCFAllocatorDefault, 0) == KERN_SUCCESS else { return [:] }
-        return cf?.takeRetainedValue() as? [String: Any] ?? [:]
-    }
-
     private func interfaces(_ service: io_service_t) -> [(cls: Int, proto: Int)] {
         var out: [(Int, Int)] = []
         var it: io_iterator_t = 0
@@ -72,7 +66,7 @@ private func drain(_ it: io_iterator_t) {
         defer { IOObjectRelease(it) }
         while case let child = IOIteratorNext(it), child != 0 {
             if IOObjectConformsTo(child, "IOUSBHostInterface") != 0 {
-                let p = Self.props(child)
+                let p = USBDoctor.props(child)
                 if let cls = p["bInterfaceClass"] as? Int { out.append((cls, p["bInterfaceProtocol"] as? Int ?? 0)) }
             }
             IOObjectRelease(child)
@@ -119,7 +113,6 @@ private func drain(_ it: io_iterator_t) {
                       isConnected: true, status: [vendor, speed].compactMap { $0 }.joined(separator: " · "), info: info, raw: raw,
                       warning: doctor.warning)
     }
-
 
     func actions(for device: Device) -> [DeviceAction] {
         var out: [DeviceAction] = []

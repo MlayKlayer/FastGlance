@@ -19,7 +19,7 @@ struct DetailView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $selection.deviceID) {
-                ForEach(Dictionary(grouping: listed, by: \.kind).sorted { $0.key.order < $1.key.order }, id: \.key) { kind, devices in
+                ForEach(DeviceKind.grouped(listed), id: \.kind) { kind, devices in
                     Section(kind.title) {
                         ForEach(devices) { d in
                             Label {

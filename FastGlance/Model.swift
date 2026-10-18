@@ -61,6 +61,10 @@ enum DeviceKind: String, Codable, CaseIterable, Identifiable {
     }
 
     var order: Int { Self.allCases.firstIndex(of: self)! }
+
+    static func grouped(_ devices: [Device]) -> [(kind: DeviceKind, devices: [Device])] {
+        Dictionary(grouping: devices, by: \.kind).sorted { $0.key.order < $1.key.order }.map { ($0.key, $0.value) }
+    }
 }
 
 struct Battery: Hashable {
@@ -101,12 +105,11 @@ struct DeviceAction: Identifiable {
     let title: String
     let symbol: String
     let run: () -> Void
+}
 
+extension DeviceAction {
     init(_ device: Device, _ key: String, _ title: String, _ symbol: String, run: @escaping () -> Void) {
-        id = "\(device.id)|\(key)"
-        self.title = title
-        self.symbol = symbol
-        self.run = run
+        self.init(id: "\(device.id)|\(key)", title: title, symbol: symbol, run: run)
     }
 }
 
