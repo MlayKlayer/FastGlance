@@ -96,6 +96,11 @@ final class USBDoctorTests: XCTestCase {
         XCTAssertNotNil(stick.note)
         // USB 2 mouse behind a USB 2 hub: nothing to fix.
         XCTAssertNil(USBDoctor.assess(speed: 1, bcdUSB: 0x0200, isStorage: false, hubs: [.init(name: "Hub", speed: 2)]).warning)
+        // XHCI numbering from IOUSBHostFamilyDefinitions.h: 3 is high speed, 5 is 10 Gb/s.
+        XCTAssertEqual(USBDoctor.speed(["USBSpeed": 3]), 2)
+        XCTAssertEqual(USBDoctor.speed(["USBSpeed": 5]), 4)
+        XCTAssertEqual(USBDoctor.speed(["USBSpeed": 2]), 0)
+        XCTAssertEqual(USBDoctor.speed(["Device Speed": 2]), 2)
         // Healthy 10 Gb/s SSD.
         let ssd = USBDoctor.assess(speed: 4, bcdUSB: 0x0320, isStorage: true, hubs: [])
         XCTAssertNil(ssd.warning)
@@ -113,5 +118,18 @@ final class DDCPairTests: XCTestCase {
         XCTAssertEqual(DDC.pair(displays: [a, b], services: [DDC.Identity(), DDC.Identity()]), [0: 0, 1: 1])
         // More displays than services: the extra one gets nothing.
         XCTAssertEqual(DDC.pair(displays: [a, b], services: [b]), [1: 0])
+    }
+}
+
+final class SleepLedgerTests: XCTestCase {
+    func testRemountListSurvivesRepeatedSleep() {
+        var l = SleepLedger()
+        l.unmounted("A")                 // first sleep
+        l.unmounted("B")                 // dark wake, then sleep again
+        l.unmounted("A")
+        l.failed("C: busy")
+        XCTAssertEqual(l.takeRemounts(), ["A", "B"])
+        XCTAssertEqual(l.takeRemounts(), [])   // cleared on wake
+        XCTAssertEqual(l.takeFailures(), ["C: busy"])
     }
 }
