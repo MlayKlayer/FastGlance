@@ -19,8 +19,24 @@ final class HistoryTests: XCTestCase {
         XCTAssertEqual(h.entries["bt:a"]?.lastConnected, t0)
         XCTAssertEqual(h.entries["usb:b"]?.lastConnected, t1)
 
+        // Disconnecting stamps the moment it went away.
+        let t2 = t1.addingTimeInterval(50)
+        h.markDisconnected(["usb:b"], now: t2)
+        XCTAssertEqual(h.entries["usb:b"]?.lastConnected, t2)
+
+        // A never-connected device takes the source's hint.
+        var hinted = Device(id: "bt:c", name: "C", kind: .mouse, isConnected: false)
+        hinted.lastConnected = t0
+        h.record([hinted], now: t2)
+        XCTAssertEqual(h.entries["bt:c"]?.lastConnected, t0)
+
+        // Low case battery doesn't count as low.
+        var buds = Device(id: "bt:d", name: "D", kind: .headphones, isConnected: true)
+        buds.batteries = [Battery(label: "L", percent: 90), Battery(label: "R", percent: 80), Battery(label: "Case", percent: 10)]
+        XCTAssertEqual(buds.lowestBattery, 80)
+
         // Nothing structural changed: only the timestamp moves.
-        XCTAssertFalse(h.record([Device(id: "usb:b", name: "B", kind: .usb, isConnected: true)], now: t1))
+        XCTAssertFalse(h.record([Device(id: "usb:b", name: "B", kind: .usb, isConnected: true)], now: t2))
 
         // Round-trips through disk; a corrupt file is moved aside, not lost.
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")

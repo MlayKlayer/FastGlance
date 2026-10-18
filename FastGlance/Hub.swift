@@ -65,7 +65,10 @@ enum Prefs {
 
     func refresh() {
         let live = sources.flatMap(\.devices)
-        let structural = history.record(live, now: Date())
+        let now = Date()
+        let structural = history.record(live, now: now)
+        let wasConnected = Set(devices.filter(\.isConnected).map(\.id))
+        history.markDisconnected(wasConnected.subtracting(live.filter(\.isConnected).map(\.id)), now: now)
         let liveIDs = Set(live.map(\.id))
         var all = live.map { d -> Device in
             var d = d
@@ -85,7 +88,10 @@ enum Prefs {
         onRefresh?(old, all)
     }
 
-    func saveHistory() { history.save() }
+    func saveHistory() {
+        history.record(sources.flatMap(\.devices).filter(\.isConnected), now: Date())
+        history.save()
+    }
 
     func source(for d: Device) -> DeviceSource? {
         sources.first { d.id.hasPrefix($0.prefix + ":") }
