@@ -7,6 +7,12 @@ import CoreGraphics
     private(set) var devices: [Device] = []
     private var ids: [String: CGDirectDisplayID] = [:]
 
+    // DDC for external monitors: services per display, cached values, coalesced writes.
+    private var ddc: [CGDirectDisplayID: CFTypeRef] = [:]
+    private var ddcValues: [CGDirectDisplayID: [UInt8: (current: UInt16, max: UInt16)]] = [:]
+    private var ddcPending: [String: UInt16] = [:]
+    private let ddcQueue = DispatchQueue(label: "FastGlance.ddc")
+
     func start() {
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.reload() }
@@ -52,7 +58,56 @@ import CoreGraphics
                       InfoRow("Model", "\(CGDisplayModelNumber(d))"), InfoRow("Serial", "\(CGDisplaySerialNumber(d))")]))
         }
         ids = nextIDs
-        if next != devices { devices = next; onChange?() }
+        if next != devices { devices = next; onChange?(); refreshDDC() }
+    }
+
+    private func refreshDDC() {
+        // ponytail: displays and AV services are paired by order, exact with one external monitor.
+        // With several, match on EDID (vendor/product in the registry) if they get swapped.
+        let externals = Self.online().filter { CGDisplayIsBuiltin($0) == 0 }.sorted { CGDisplayUnitNumber($0) < CGDisplayUnitNumber($1) }
+        let services = DDC.externalServices()
+        ddc = Dictionary(uniqueKeysWithValues: zip(externals, services).map { ($0, $1) })
+        let targets = ddc
+        ddcQueue.async {
+            var values: [CGDirectDisplayID: [UInt8: (current: UInt16, max: UInt16)]] = [:]
+            for (display, svc) in targets {
+                for code in [DDC.brightness, DDC.contrast, DDC.volume, DDC.input] {
+                    if let v = DDC.read(svc, code) { values[display, default: [:]][code] = v }
+                }
+            }
+            let snapshot = values
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    self.ddcValues = snapshot
+                    self.onChange?()
+                }
+            }
+        }
+    }
+
+    private func ddcSet(_ d: CGDirectDisplayID, _ code: UInt8, _ value: UInt16) {
+        ddcValues[d]?[code]?.current = value
+        let key = "\(d)-\(code)"
+        let alreadyQueued = ddcPending[key] != nil
+        ddcPending[key] = value
+        guard !alreadyQueued, let svc = ddc[d] else { return }
+        // A slider fires many values; only the latest one is sent.
+        ddcQueue.async {
+            usleep(40_000)
+            let v = DispatchQueue.main.sync { MainActor.assumeIsolated { self.ddcPending.removeValue(forKey: key) } }
+            if let v { DDC.write(svc, code, v) }
+        }
+    }
+
+    private func ddcSlider(_ device: Device, _ d: CGDirectDisplayID, _ code: UInt8, _ title: String, _ symbol: String) -> DeviceControl? {
+        guard let v = ddcValues[d]?[code], v.max > 0 else { return nil }
+        return DeviceControl(id: "\(device.id)|ddc\(code)", title: title, symbol: symbol, kind: .slider(
+            get: { [weak self] in Double(self?.ddcValues[d]?[code]?.current ?? v.current) / Double(v.max) },
+            set: { [weak self] in self?.ddcSet(d, code, UInt16(($0 * Double(v.max)).rounded())) }))
+    }
+
+    private func currentInput(_ d: CGDirectDisplayID) -> UInt16? {
+        ddcValues[d]?[DDC.input].map { $0.current & 0xFF }
     }
 
     func actions(for device: Device) -> [DeviceAction] {
@@ -67,6 +122,13 @@ import CoreGraphics
                 self?.setMirror(d, on: !mirrored)
             })
         }
+        if ddc[d] != nil {
+            for input in DDC.inputs where input.code != currentInput(d) {
+                out.append(DeviceAction(device, "input\(input.code)", "Switch to \(input.name)", "arrow.left.arrow.right.square") { [weak self] in
+                    self?.ddcSet(d, DDC.input, input.code)
+                })
+            }
+        }
         out.append(DeviceAction(device, "settings", "Displays Settings…", "gearshape") {
             Util.open("x-apple.systempreferences:com.apple.Displays-Settings.extension")
         })
@@ -80,6 +142,16 @@ import CoreGraphics
             out.append(DeviceControl(id: "\(device.id)|brightness", title: "Brightness", symbol: "sun.max", kind: .slider(
                 get: { Double(DisplayBrightness.get(d) ?? 0) },
                 set: { DisplayBrightness.set(d, Float($0)) })))
+        } else if let c = ddcSlider(device, d, DDC.brightness, "Brightness", "sun.max") {
+            out.append(c)
+        }
+        out += [ddcSlider(device, d, DDC.contrast, "Contrast", "circle.lefthalf.filled"),
+                ddcSlider(device, d, DDC.volume, "Speaker volume", "speaker.wave.2")].compactMap { $0 }
+        if ddc[d] != nil {
+            out.append(DeviceControl(id: "\(device.id)|input", title: "Input", symbol: "arrow.left.arrow.right.square", kind: .picker(
+                options: DDC.inputs.map(\.name),
+                get: { [weak self] in DDC.inputs.firstIndex { $0.code == self?.currentInput(d) } ?? 0 },
+                set: { [weak self] in self?.ddcSet(d, DDC.input, DDC.inputs[$0].code) })))
         }
         let modes = Self.modes(d)
         if modes.count > 1 {

@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import AVFoundation
 
 @main
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
@@ -28,7 +29,30 @@ import SwiftUI
             Notifier.shared.handle(old: old, new: new)
             self?.status.update(old: old, new: new)
         }
+        hub.cameras.openPreview = { [weak self] in self?.openCamera($0) }
+        Hotkeys.shared.handler = { [weak self] id in self?.hotkey(id) }
+        applyHotkeys()
+        NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.applyHotkeys() }
+        }
         hub.start()
+    }
+
+    private func applyHotkeys() {
+        Hotkeys.shared.set(enabled: UserDefaults.standard.bool(forKey: Prefs.hotkeys))
+    }
+
+    private func hotkey(_ id: UInt32) {
+        if id == Hotkeys.micID {
+            hub.audio.toggleMic()
+            Notifier.shared.post(hub.audio.isMicMuted ? "Microphone muted" : "Microphone on", "")
+        } else if let pin = hub.pinnedActions.dropFirst(Int(id) - 1).first {
+            pin.action.run()
+        } else {
+            NSSound.beep()
+            return
+        }
+        status.flash()
     }
 
     func applicationWillTerminate(_ note: Notification) {
@@ -48,6 +72,12 @@ import SwiftUI
         status.closePopover()
         show("settings", title: "FastGlance Settings", size: NSSize(width: 460, height: 600), resizable: false,
              SettingsView().environmentObject(hub))
+    }
+
+    private func openCamera(_ camera: AVCaptureDevice) {
+        windows["camera"]?.close()  // one preview at a time
+        show("camera", title: camera.localizedName, size: NSSize(width: 640, height: 400), resizable: true,
+             CameraPreview(device: camera).frame(minWidth: 320, minHeight: 200))
     }
 
     private func show(_ key: String, title: String, size: NSSize, resizable: Bool, _ view: some View) {
@@ -73,6 +103,11 @@ import SwiftUI
 
     func windowWillClose(_ note: Notification) {
         let closing = note.object as? NSWindow
+        if let closing, closing === windows["camera"] {
+            // Drop the view so the capture session stops and the camera light goes off.
+            closing.contentViewController = nil
+            windows["camera"] = nil
+        }
         if !windows.values.contains(where: { $0 !== closing && $0.isVisible }) {
             NSApp.setActivationPolicy(.accessory)
         }

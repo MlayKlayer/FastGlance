@@ -11,6 +11,7 @@ struct SettingsView: View {
     @AppStorage(Prefs.hiddenKinds) private var hiddenRaw = ""
     @AppStorage(Prefs.mutedKinds) private var mutedRaw = ""
     @AppStorage(Prefs.networkScan) private var networkScan = true
+    @AppStorage(Prefs.hotkeys) private var hotkeys = true
     @AppStorage(Prefs.networkScanInterval) private var scanInterval = 60.0
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
@@ -21,6 +22,13 @@ struct SettingsView: View {
             Section("General") {
                 Toggle("Launch at login", isOn: Binding(get: { launchAtLogin }, set: setLaunchAtLogin))
                 if let loginError { Text(loginError).font(.caption).foregroundStyle(.red) }
+            }
+
+            Section {
+                Toggle("Keyboard shortcuts", isOn: $hotkeys)
+            } footer: {
+                Text("⌃⌥1 … ⌃⌥9 run your pinned actions in order. ⌃⌥M mutes or unmutes the microphone. Works from any app.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
 
             Section {

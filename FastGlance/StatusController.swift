@@ -124,7 +124,7 @@ import SwiftUI
         }
     }
 
-    private func flash() {
+    func flash() {
         guard let button = item.button else { return }
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.25

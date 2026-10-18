@@ -9,6 +9,7 @@ struct MenuView: View {
     @State private var expanded: String?
     @AppStorage("showOffline") private var showOffline = false
     @AppStorage(Prefs.hiddenKinds) private var hiddenRaw = ""
+    @AppStorage(Prefs.hotkeys) private var hotkeys = true
 
     private var visible: [Device] {
         let hidden = Set(hiddenRaw.split(separator: ",").map(String.init))
@@ -51,8 +52,8 @@ struct MenuView: View {
             if !pinned.isEmpty && query.isEmpty {
                 SectionTitle("Pinned")
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 6)], spacing: 6) {
-                    ForEach(pinned, id: \.action.id) { item in
-                        PinChip(device: item.device, action: item.action)
+                    ForEach(Array(pinned.enumerated()), id: \.element.action.id) { i, item in
+                        PinChip(device: item.device, action: item.action, shortcut: hotkeys && i < 9 ? "⌃⌥\(i + 1)" : nil)
                     }
                 }
             }
@@ -119,6 +120,7 @@ struct IconButton: View {
 struct PinChip: View {
     let device: Device
     let action: DeviceAction
+    var shortcut: String? = nil
     var body: some View {
         Button(action: action.run) {
             HStack(spacing: 6) {
@@ -128,6 +130,7 @@ struct PinChip: View {
                     Text(device.name).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 0)
+                if let shortcut { Text(shortcut).font(.caption2.monospaced()).foregroundStyle(.tertiary) }
             }
             .padding(.horizontal, 8).padding(.vertical, 5)
             .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 7))

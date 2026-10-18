@@ -85,8 +85,8 @@ private func drain(_ it: io_iterator_t) {
         guard deviceClass != 9 else { return nil }  // hubs
         let ifaces = interfaces(service)
         let classes = Set(ifaces.map(\.cls))
-        // Storage and audio functions are shown by their own sources, with better controls.
-        guard !classes.contains(8), !classes.contains(1) else { return nil }
+        // Storage, audio and camera functions are shown by their own sources, with better controls.
+        guard !classes.contains(8), !classes.contains(1), !classes.contains(14) else { return nil }  // + cameras
 
         let vendorID = p["idVendor"] as? Int ?? 0
         let productID = p["idProduct"] as? Int ?? 0
@@ -97,7 +97,6 @@ private func drain(_ it: io_iterator_t) {
 
         let kind: DeviceKind
         if vendorID == 0x05AC, name.contains("iPhone") || name.contains("iPad") { kind = .phone }
-        else if classes.contains(14) { kind = .camera }
         else if classes.contains(7) { kind = .printer }
         else if ifaces.contains(where: { $0.cls == 3 && $0.proto == 1 }) { kind = .keyboard }
         else if ifaces.contains(where: { $0.cls == 3 && $0.proto == 2 }) { kind = .mouse }
