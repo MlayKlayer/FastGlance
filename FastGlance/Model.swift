@@ -93,6 +93,8 @@ struct Device: Identifiable, Hashable {
     var symbol: String? = nil
     /// Something the user should fix, e.g. a fast drive stuck on a USB 2 cable.
     var warning: String? = nil
+    /// Hidden from the menu and its notifications, still listed in the device window.
+    var isHidden = false
 
     var icon: String { symbol ?? kind.symbol }
 

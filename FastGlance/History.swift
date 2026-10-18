@@ -7,6 +7,9 @@ struct DeviceHistory: Codable, Equatable {
         var name: String
         var kind: DeviceKind
         var lastConnected: Date?
+        /// The user's own name and "hide from the menu". Optional so older history files still load.
+        var nickname: String?
+        var hidden: Bool?
     }
 
     var entries: [String: Entry] = [:]

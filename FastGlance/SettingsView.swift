@@ -27,6 +27,37 @@ struct SettingsView: View {
             }
 
             Section {
+                if hub.pinList.isEmpty {
+                    Text("Pin actions from a device's ••• menu or its details.").foregroundStyle(.secondary)
+                }
+                ForEach(hub.pinList) { p in
+                    HStack(spacing: 8) {
+                        Text(p.slot < 9 ? "⌃⌥\(p.slot + 1)" : "").font(.caption.monospaced()).foregroundStyle(.tertiary).frame(width: 30)
+                        Image(systemName: p.symbol).frame(width: 18).foregroundStyle(p.action == nil ? .secondary : .primary)
+                        VStack(alignment: .leading, spacing: 1) {
+                            TextField("Title", text: Binding(get: { p.label ?? "" }, set: { hub.setPinLabel(p.id, $0) }),
+                                      prompt: Text(p.defaultTitle))
+                                .textFieldStyle(.plain)
+                            Text(p.subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        Button { hub.removePin(p.id) } label: { Image(systemName: "minus.circle") }
+                            .buttonStyle(.borderless).help("Unpin")
+                    }
+                    .contextMenu {
+                        Button("Move Up") { hub.movePins(from: [p.slot], to: p.slot - 1) }.disabled(p.slot == 0)
+                        Button("Move Down") { hub.movePins(from: [p.slot], to: p.slot + 2) }.disabled(p.slot == hub.pins.count - 1)
+                        Button("Unpin") { hub.removePin(p.id) }
+                    }
+                }
+                .onMove(perform: hub.movePins)
+            } header: {
+                Text("Pinned actions")
+            } footer: {
+                Text("Drag to reorder (or right-click). Click a title to rename it; clear it to use the action's own.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
+            Section {
                 Toggle("Keyboard shortcuts", isOn: $hotkeys)
             } footer: {
                 Text("⌃⌥1 … ⌃⌥9 run your pinned actions in order. ⌃⌥M mutes or unmutes the microphone. Works from any app.")

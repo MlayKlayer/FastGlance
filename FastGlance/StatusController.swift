@@ -75,7 +75,7 @@ import SwiftUI
         guard let button = item.button else { return }
         let d = UserDefaults.standard
         let connected = hub.devices.filter(\.isConnected)
-        let powered = connected.filter { $0.kind != .printer }  // ink isn't a battery
+        let powered = connected.filter { $0.kind != .printer && !$0.isHidden }  // ink isn't a battery
         let threshold = d.integer(forKey: Prefs.batteryThreshold)
 
         let dot: NSColor? = hub.audio.isMicMuted ? .systemRed
