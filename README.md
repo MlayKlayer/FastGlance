@@ -11,6 +11,11 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license"></a>
 </p>
 
+<p align="center">
+  <a href="docs/media/launch-film.mp4"><img src="docs/media/launch-film-poster.png" width="720" alt="FastGlance launch film: the menu bar popover listing AirPods Pro, an SSD, a Studio Display and an iPhone"></a>
+  <br><sub><a href="docs/media/launch-film.mp4">▶ Watch the 15-second launch film</a></sub>
+</p>
+
 FastGlance is a native macOS menu bar utility for finding connected devices, checking their status, and taking quick actions. It brings Bluetooth, USB, audio, disks, displays, cameras, printers, and local network discovery into one place, with a history of previously seen devices.
 
 **Early beta · 0.1.0.** Build from source using the instructions below. No notarized installer is currently provided. Device support varies; the automated tests do not replace real hardware testing.
