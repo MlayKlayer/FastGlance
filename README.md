@@ -55,7 +55,7 @@ xcodebuild -project FastGlance.xcodeproj -scheme FastGlance \
 
 The default build uses an ad-hoc signature, so an Apple Developer account is not required for a local build. For a development certificate, pass `CODE_SIGN_IDENTITY="Apple Development" DEVELOPMENT_TEAM="YOUR_TEAM_ID"` to `xcodebuild`. Keep signing credentials out of the repository.
 
-Quit any running copy, then copy `build/Build/Products/Debug/FastGlance.app` into `~/Applications` using Finder and open it there. Keep a single installed copy: launch-at-login registers the app’s path. Rebuilding with a different signing identity can affect macOS permission grants.
+Quit any running copy, then copy `build/Build/Products/Debug/FastGlance.app` into `/Applications` using Finder and open it there. Keep a single installed copy: launch-at-login registers the app’s path. Rebuilding with a different signing identity can affect macOS permission grants.
 
 FastGlance opens in the menu bar rather than the Dock. Click its icon to browse; right-click for the device window, Settings or Quit. Option-click runs the first pinned action.
 
