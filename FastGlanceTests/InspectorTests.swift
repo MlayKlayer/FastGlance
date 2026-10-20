@@ -139,3 +139,65 @@ final class PrinterInspectorTests: XCTestCase {
         XCTAssertEqual(s[1].rows.first?.value, "97% · Toner")
     }
 }
+
+final class NetworkInspectorTests: XCTestCase {
+    func testPing() {
+        XCTAssertEqual(NetTools.pingSample("64 bytes from 172.20.10.1: icmp_seq=0 ttl=64 time=4.567 ms"), .reply(4.567))
+        XCTAssertEqual(NetTools.pingSample("Request timeout for icmp_seq 3"), .lost)
+        XCTAssertNil(NetTools.pingSample("PING 172.20.10.1 (172.20.10.1): 56 data bytes"))
+        let s = NetTools.stats([.reply(10), .reply(14), .lost, .reply(12)])
+        XCTAssertEqual(s.average, 12)
+        XCTAssertEqual(s.jitter, 3)  // |14-10| and |12-14|
+        XCTAssertEqual(s.loss, 0.25)
+        XCTAssertEqual(NetTools.stats([]).loss, 0)
+    }
+
+    func testDNSDigSMB() {
+        let scutil = """
+        DNS configuration
+
+        resolver #1
+          search domain[0] : lan
+          nameserver[0] : 172.20.10.1
+          nameserver[1] : fe80::1%en0
+          if_index : 11 (en0)
+
+        resolver #2
+          domain   : local
+          nameserver[0] : 224.0.0.251
+
+        DNS configuration (for scoped queries)
+
+        resolver #1
+          nameserver[0] : 9.9.9.9
+        """
+        let d = NetTools.dns(scutil)
+        XCTAssertEqual(d.servers, ["172.20.10.1", "fe80::1%en0"])
+        XCTAssertEqual(d.domains, ["lan"])
+        XCTAssertEqual(NetTools.digQueryTime(";; Query time: 23 msec\n;; SERVER: 172.20.10.1#53"), 23)
+        XCTAssertNil(NetTools.digQueryTime(";; connection timed out; no servers could be reached"))
+
+        let smb = """
+        Share                                           Type    Comments
+        -------------------------------
+        Public                                          Disk
+        Time Machine Backups                            Disk    Backups here
+        IPC$                                            Pipe    Remote IPC
+
+        3 shares listed
+        """
+        XCTAssertEqual(NetTools.smbShares(smb), [
+            NetTools.Share(name: "Public", type: "Disk", comment: ""),
+            NetTools.Share(name: "Time Machine Backups", type: "Disk", comment: "Backups here"),
+            NetTools.Share(name: "IPC$", type: "Pipe", comment: "Remote IPC"),
+        ])
+        XCTAssertEqual(NetTools.channelCounts([(6, "2.4 GHz"), (6, "2.4 GHz"), (36, "5 GHz")]), ["2.4 GHz/6": 2, "5 GHz/36": 1])
+        // Length-prefixed TXT strings: "model=J105aAP", a bare "flag", a binary value.
+        var txt = Data([13]) + Data("model=J105aAP".utf8)
+        txt += Data([4]) + Data("flag".utf8)
+        txt += Data([6]) + Data("bin=".utf8) + Data([0x01, 0x02])
+        XCTAssertEqual(NetworkSource.txtText(txt), "bin=<2 bytes>, flag, model=J105aAP")
+        XCTAssertEqual(NetworkSource.txtText(Data([0])), "")
+        XCTAssertEqual(NetworkSource.txtText(Data([9]) + Data("short".utf8)), "short")  // truncated record
+    }
+}

@@ -1,4 +1,4 @@
-import Foundation
+import SwiftUI
 import Darwin
 
 /// Devices on the local network: Bonjour services for names and types, the ARP table for everything else.
@@ -264,6 +264,54 @@ import Darwin
             out.append(DeviceAction(device, "copymac", "Copy MAC Address", "doc.on.doc") { Util.copy(mac.uppercased()) })
         }
         return out
+    }
+
+    func sections(for device: Device) -> [InfoSection] {
+        guard let h = hosts[device.id] else { return [] }
+        let rows = services.filter { h.types.contains($0.type) && h.names[$0.type] == $0.name }
+            .sorted { ($0.type, $0.name) < ($1.type, $1.name) }
+            .map { s -> InfoRow in
+                let txt = s.txtRecordData().map(Self.txtText) ?? ""
+                let value = [s.name, s.port > 0 ? "port \(s.port)" : nil, txt.isEmpty ? nil : txt].compactMap { $0 }.joined(separator: " · ")
+                return InfoRow(Self.serviceLabel(s.type), value)
+            }
+        return rows.isEmpty ? [] : [InfoSection(title: "Bonjour Services", rows: rows)]
+    }
+
+    func tools(for device: Device) -> [DeviceTool] {
+        guard device.isConnected, let h = hosts[device.id], let ip = h.ip else { return [] }
+        var out = [DeviceTool(id: "lan.latency", title: "Latency", symbol: "waveform.path.ecg") {
+            AnyView(PingPanel(title: "Ping", target: ip).id(ip))
+        }]
+        if h.types.contains("_smb._tcp.") {
+            let target = h.hostName.map { $0.hasSuffix(".") ? String($0.dropLast()) : $0 } ?? ip
+            out.append(DeviceTool(id: "lan.smb", title: "Shared Folders", symbol: "folder") { AnyView(SMBSharesTool(host: target)) })
+        }
+        return out
+    }
+
+    /// TXT records as "key=value" pairs; binary values show as their size. Parsed by hand (RFC 6763 length-prefixed strings):
+    /// `NetService.dictionary(fromTXTRecord:)` returns NSNull for keys without a value and crashes when bridged.
+    nonisolated static func txtText(_ data: Data) -> String {
+        let bytes = [UInt8](data)
+        var pairs: [(String, String?)] = []
+        var i = 0
+        while i < bytes.count {
+            let len = Int(bytes[i])
+            let end = min(i + 1 + len, bytes.count)
+            let entry = Array(bytes[(i + 1)..<end])
+            i = end
+            guard !entry.isEmpty else { continue }
+            let eq = entry.firstIndex(of: UInt8(ascii: "="))
+            let key = String(decoding: entry[..<(eq ?? entry.count)], as: UTF8.self)
+            guard !key.isEmpty else { continue }
+            guard let eq else { pairs.append((key, nil)); continue }
+            let value = Array(entry[(eq + 1)...])
+            let printable = value.allSatisfy { $0 >= 0x20 && $0 != 0x7F } && String(bytes: value, encoding: .utf8) != nil
+            pairs.append((key, printable ? String(decoding: value, as: UTF8.self) : "<\(value.count) bytes>"))
+        }
+        let text = pairs.sorted { $0.0 < $1.0 }.map { key, value in value.map { "\(key)=\($0)" } ?? key }.joined(separator: ", ")
+        return text.count > 400 ? String(text.prefix(400)) + "…" : text
     }
 
     static func ping(_ ip: String, _ device: Device) {

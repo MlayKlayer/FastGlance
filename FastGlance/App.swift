@@ -110,10 +110,11 @@ import AVFoundation
 
     func windowWillClose(_ note: Notification) {
         let closing = note.object as? NSWindow
-        if let closing, closing === windows["camera"] {
-            // Drop the view so the capture session stops and the camera light goes off.
+        if let closing, let key = windows.first(where: { $0.value === closing })?.key {
+            // Drop the views so live tools stop: the camera session (and its light), pings, disk and traffic sampling.
+            // The next open builds a fresh window; the autosaved frame and the selection carry over.
             closing.contentViewController = nil
-            windows["camera"] = nil
+            windows[key] = nil
         }
         if !windows.values.contains(where: { $0 !== closing && $0.isVisible }) {
             NSApp.setActivationPolicy(.accessory)
