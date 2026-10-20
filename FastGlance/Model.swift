@@ -128,7 +128,7 @@ struct DeviceControl: Identifiable {
 }
 
 /// A titled group of read-only rows in the inspector's Advanced tab.
-struct InfoSection: Identifiable {
+struct InfoSection: Identifiable, Hashable {
     let title: String
     let rows: [InfoRow]
     var id: String { title }

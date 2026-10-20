@@ -28,6 +28,24 @@ enum Util {
         }
     }
 
+    /// Blocking; call off the main thread. Exit status plus stdout and stderr together, for tools whose errors matter.
+    nonisolated static func exec(_ path: String, _ args: [String]) -> (status: Int32, output: String) {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: path)
+        p.arguments = args
+        let pipe = Pipe()
+        p.standardOutput = pipe
+        p.standardError = pipe
+        do {
+            try p.run()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            p.waitUntilExit()
+            return (p.terminationStatus, String(decoding: data, as: UTF8.self))
+        } catch {
+            return (-1, error.localizedDescription)
+        }
+    }
+
     nonisolated static func text(_ path: String, _ args: [String]) -> String {
         String(decoding: output(path, args), as: UTF8.self)
     }
