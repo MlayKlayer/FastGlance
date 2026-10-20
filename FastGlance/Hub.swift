@@ -141,6 +141,14 @@ enum Prefs {
         source(for: d)?.controls(for: d) ?? []
     }
 
+    func sections(for d: Device) -> [InfoSection] {
+        source(for: d)?.sections(for: d) ?? []
+    }
+
+    func tools(for d: Device) -> [DeviceTool] {
+        source(for: d)?.tools(for: d) ?? []
+    }
+
     /// Offline but still reported by a source (a paired Bluetooth device, an installed printer): forgetting it here can't stick.
     func isKnownToSystem(_ d: Device) -> Bool {
         source(for: d)?.devices.contains { $0.id == d.id } ?? false

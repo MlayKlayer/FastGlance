@@ -1,4 +1,4 @@
-import Foundation
+import SwiftUI
 
 enum DeviceKind: String, Codable, CaseIterable, Identifiable {
     case internet
@@ -127,6 +127,23 @@ struct DeviceControl: Identifiable {
     let kind: Kind
 }
 
+/// A titled group of read-only rows in the inspector's Advanced tab.
+struct InfoSection: Identifiable {
+    let title: String
+    let rows: [InfoRow]
+    var id: String { title }
+}
+
+/// A live or interactive tool in the inspector's Controls & Diagnostics tab (a print queue, a latency monitor).
+/// Tools are collapsible; a collapsed tool's view is never built, so it does no work.
+struct DeviceTool: Identifiable {
+    /// Per kind of tool, not per device ("printer.jobs"), so the expanded state carries over between devices.
+    let id: String
+    let title: String
+    let symbol: String
+    let view: () -> AnyView
+}
+
 @MainActor protocol DeviceSource: AnyObject {
     var prefix: String { get }
     var devices: [Device] { get }
@@ -135,8 +152,12 @@ struct DeviceControl: Identifiable {
     /// First action is the primary one shown inline in the menu.
     func actions(for device: Device) -> [DeviceAction]
     func controls(for device: Device) -> [DeviceControl]
+    func sections(for device: Device) -> [InfoSection]
+    func tools(for device: Device) -> [DeviceTool]
 }
 
 extension DeviceSource {
     func controls(for device: Device) -> [DeviceControl] { [] }
+    func sections(for device: Device) -> [InfoSection] { [] }
+    func tools(for device: Device) -> [DeviceTool] { [] }
 }
