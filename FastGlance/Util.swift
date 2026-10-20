@@ -29,7 +29,8 @@ enum Util {
     }
 
     /// Blocking; call off the main thread. Exit status plus stdout and stderr together, for tools whose errors matter.
-    nonisolated static func exec(_ path: String, _ args: [String]) -> (status: Int32, output: String) {
+    /// A `timeout` terminates the tool, for network commands that can hang on an unreachable host.
+    nonisolated static func exec(_ path: String, _ args: [String], timeout: TimeInterval? = nil) -> (status: Int32, output: String) {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: path)
         p.arguments = args
@@ -38,6 +39,9 @@ enum Util {
         p.standardError = pipe
         do {
             try p.run()
+            if let timeout {
+                DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { if p.isRunning { p.terminate() } }
+            }
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
             p.waitUntilExit()
             return (p.terminationStatus, String(decoding: data, as: UTF8.self))
