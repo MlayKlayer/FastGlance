@@ -89,3 +89,53 @@ final class InspectorTests: XCTestCase {
         XCTAssertEqual(smart["Data written"], Util.bytes(1_024_000))
     }
 }
+
+final class PrinterInspectorTests: XCTestCase {
+    func testJobsAndReasons() {
+        // Real ipptool -tv output: attribute order differs per job, so jobs split where a key repeats.
+        let text = """
+                job-originating-user-name (nameWithoutLanguage) = mlayklayer
+                job-name (nameWithoutLanguage) = FG held test
+                time-at-creation (integer) = 1792488569
+                job-id (integer) = 272
+                job-state (enum) = pending-held
+                job-state-reasons (keyword) = job-hold-until-specified
+                job-k-octets (integer) = 1
+                job-originating-user-name (nameWithoutLanguage) = mlayklayer
+                job-name (nameWithoutLanguage) = FG pending test
+                time-at-creation (integer) = 1792488569
+                job-id (integer) = 273
+                job-state (enum) = processing
+                job-state-reasons (keyword) = job-printing
+                job-k-octets (integer) = 1
+        """
+        let jobs = PrinterSource.parseJobs(text)
+        XCTAssertEqual(jobs.map(\.id), [272, 273])
+        XCTAssertEqual(jobs[0].name, "FG held test")
+        XCTAssertTrue(jobs[0].isHeld)
+        XCTAssertEqual(jobs[1].state, "processing")
+        XCTAssertEqual(PrinterSource.parseJobs(""), [])
+
+        let r = PrinterSource.reasons("media-jam-error,toner-low-warning,offline-report,paused,none")
+        XCTAssertEqual(r.map(\.text), ["Paper jam", "Toner low (warning)", "Printer reports offline", "Paused"])
+        XCTAssertEqual(r.map(\.isError), [true, false, false, false])
+        XCTAssertEqual(PrinterSource.reasons("none"), [])
+        XCTAssertEqual(PrinterSource.reasons("weird-thing-error").first?.text, "Weird Thing")
+    }
+
+    func testCapabilities() {
+        XCTAssertEqual(PrinterSource.mediaName("iso_a4_210x297mm"), "A4")
+        XCTAssertEqual(PrinterSource.mediaName("na_letter_8.5x11in"), "Letter")
+        XCTAssertEqual(PrinterSource.mediaName("jis_b5_182x257mm"), "JIS B5")
+        XCTAssertEqual(PrinterSource.mediaName("na_executive_7.25x10.5in"), "Executive")
+        XCTAssertEqual(PrinterSource.mediaName("odd"), "odd")
+        let s = PrinterSource.sections(["media-supported": "iso_a4_210x297mm,na_legal_8.5x14in", "sides-supported": "one-sided",
+                                        "print-color-mode-supported": "monochrome", "marker-names": "Black", "marker-levels": "97",
+                                        "marker-types": "toner", "printer-state": "idle", "printer-state-reasons": "none"])
+        let caps = Dictionary(uniqueKeysWithValues: s[0].rows.map { ($0.key, $0.value) })
+        XCTAssertEqual(caps["Paper sizes"], "A4, Legal")
+        XCTAssertEqual(caps["Sides"], "One-sided")
+        XCTAssertEqual(caps["Color"], "Black & white")
+        XCTAssertEqual(s[1].rows.first?.value, "97% · Toner")
+    }
+}
