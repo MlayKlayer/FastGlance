@@ -200,4 +200,12 @@ final class NetworkInspectorTests: XCTestCase {
         XCTAssertEqual(NetworkSource.txtText(Data([0])), "")
         XCTAssertEqual(NetworkSource.txtText(Data([9]) + Data("short".utf8)), "short")  // truncated record
     }
+
+    func testDisplayPanelFacts() {
+        // MacBook Air 13" (M3): 2560 px across 290 mm is 224 ppi.
+        XCTAssertEqual(DisplaySource.ppi(pixels: 2560, mm: 290)!, 224, accuracy: 0.5)
+        XCTAssertNil(DisplaySource.ppi(pixels: 1920, mm: 0))  // projectors and some adapters report no size
+        XCTAssertEqual(DisplaySource.edrText(potential: 1), "None (SDR only)")
+        XCTAssertEqual(DisplaySource.edrText(potential: 16), "Up to 16.0× SDR white")
+    }
 }
