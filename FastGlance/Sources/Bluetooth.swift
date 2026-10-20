@@ -180,6 +180,11 @@ import AppKit
         return audio.controls(for: a)
     }
 
+    func sections(for device: Device) -> [InfoSection] {
+        guard device.isConnected, let a = audio.outputs(forBluetoothAddress: address(device)).first else { return [] }
+        return audio.sections(for: a)
+    }
+
     private func connect(_ addr: String) {
         guard let d = IOBluetoothDevice(addressString: addr) else { return }
         if d.isConnected() {

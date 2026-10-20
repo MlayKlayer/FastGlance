@@ -64,117 +64,152 @@ struct DeviceCard: View {
     @State private var confirmForget = false
     @State private var name = ""
 
+    enum Tab: String, CaseIterable {
+        case overview = "Overview", diagnostics = "Controls & Diagnostics", advanced = "Advanced"
+    }
+    @AppStorage("inspectorTab") private var savedTab = Tab.overview.rawValue
+
     var body: some View {
         let actions = hub.actions(for: device)
         let controls = hub.controls(for: device)
+        let tools = hub.tools(for: device)
+        let sections = hub.sections(for: device)
+        let tabs = Tab.allCases.filter {
+            switch $0 {
+            case .overview: true
+            case .diagnostics: !tools.isEmpty
+            case .advanced: !sections.isEmpty || !device.raw.isEmpty
+            }
+        }
+        let tab = tabs.first { $0.rawValue == savedTab } ?? .overview
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
 
-                if let warning = device.warning {
-                    Label {
-                        Text(warning).fixedSize(horizontal: false, vertical: true)
-                    } icon: {
-                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                if tabs.count > 1 {
+                    Picker("", selection: Binding(get: { tab }, set: { savedTab = $0.rawValue })) {
+                        ForEach(tabs, id: \.self) { Text($0.rawValue).tag($0) }
                     }
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+                    .pickerStyle(.segmented).labelsHidden()
                 }
 
-                if !device.batteries.isEmpty {
-                    GroupBox("Battery") {
-                        HStack(spacing: 24) {
-                            ForEach(device.batteries, id: \.self) { b in
-                                Gauge(value: Double(b.percent), in: 0...100) {
-                                    Text(b.label.isEmpty ? "Battery" : b.label)
-                                } currentValueLabel: {
-                                    Text("\(b.percent)%")
-                                }
-                                .gaugeStyle(.accessoryCircularCapacity)
-                                .tint(b.percent <= threshold ? .orange : .green)
-                            }
-                            Spacer()
-                        }
-                        .padding(6)
-                    }
-                }
-
-                if let used = hub.disks.usage(device) {
-                    GroupBox("Capacity") {
-                        ProgressView(value: used) { Text(device.status ?? "") }.padding(6)
-                    }
-                }
-
-                if !controls.isEmpty {
-                    GroupBox("Controls") {
-                        VStack(alignment: .leading, spacing: 10) {
-                            ForEach(controls) { ControlView(control: $0) }
-                        }
-                        .padding(6)
-                    }
-                }
-
-                if !actions.isEmpty {
-                    GroupBox("Actions") {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 190), spacing: 8)], alignment: .leading, spacing: 8) {
-                            ForEach(actions) { a in
-                                HStack(spacing: 4) {
-                                    Button(action: a.run) {
-                                        Label(a.title, systemImage: a.symbol).frame(maxWidth: .infinity, alignment: .leading)
-                                    }
-                                    Button { hub.togglePin(a) } label: {
-                                        Image(systemName: hub.isPinned(a) ? "pin.fill" : "pin")
-                                    }
-                                    .buttonStyle(.borderless)
-                                    .help(hub.isPinned(a) ? "Unpin from menu" : "Pin to menu")
-                                }
-                            }
-                        }
-                        .padding(6)
-                    }
-                }
-
-                GroupBox("Information") {
-                    InfoGrid(rows: [InfoRow("Category", device.kind.title),
-                                    InfoRow("Last connected", device.isConnected ? "Now" : (device.lastConnected?.formatted(date: .abbreviated, time: .shortened) ?? "Unknown"))]
-                             + device.info)
-                        .padding(6)
-                }
-
-                if !device.raw.isEmpty {
-                    GroupBox {
-                        DisclosureGroup("Raw properties (\(device.raw.count))") {
-                            InfoGrid(rows: device.raw).padding(.top, 6)
-                            Button("Copy All") {
-                                Util.copy(device.raw.map { "\($0.key): \($0.value)" }.joined(separator: "\n"))
-                            }
-                            .padding(.top, 4)
-                        }
-                        .padding(6)
-                    }
-                }
-
-                if !device.isConnected && hub.isKnownToSystem(device) {
-                    Text(device.kind == .printer
-                         ? "To remove this printer, delete it in Printers & Scanners."
-                         : "macOS still has this device paired. To remove it, unpair it in Bluetooth Settings.")
-                        .font(.caption).foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                } else if !device.isConnected {
-                    HStack {
-                        Spacer()
-                        Button("Forget Device…", role: .destructive) { confirmForget = true }
-                    }
-                    .confirmationDialog("Forget \(device.name)?", isPresented: $confirmForget) {
-                        Button("Forget", role: .destructive) { hub.forget(device) }
-                    } message: {
-                        Text("It is removed from FastGlance's history. Bluetooth pairing is not affected.")
-                    }
+                switch tab {
+                case .overview: overview(actions: actions, controls: controls)
+                case .diagnostics: ForEach(tools) { ToolBox(tool: $0) }
+                case .advanced: advanced(sections)
                 }
             }
             .padding(24)
             .frame(maxWidth: 720, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder private func overview(actions: [DeviceAction], controls: [DeviceControl]) -> some View {
+        if let warning = device.warning {
+            Label {
+                Text(warning).fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+        }
+
+        if !device.batteries.isEmpty {
+            GroupBox("Battery") {
+                HStack(spacing: 24) {
+                    ForEach(device.batteries, id: \.self) { b in
+                        Gauge(value: Double(b.percent), in: 0...100) {
+                            Text(b.label.isEmpty ? "Battery" : b.label)
+                        } currentValueLabel: {
+                            Text("\(b.percent)%")
+                        }
+                        .gaugeStyle(.accessoryCircularCapacity)
+                        .tint(b.percent <= threshold ? .orange : .green)
+                    }
+                    Spacer()
+                }
+                .padding(6)
+            }
+        }
+
+        if let used = hub.disks.usage(device) {
+            GroupBox("Capacity") {
+                ProgressView(value: used) { Text(device.status ?? "") }.padding(6)
+            }
+        }
+
+        if !controls.isEmpty {
+            GroupBox("Controls") {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(controls) { ControlView(control: $0) }
+                }
+                .padding(6)
+            }
+        }
+
+        if !actions.isEmpty {
+            GroupBox("Actions") {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 190), spacing: 8)], alignment: .leading, spacing: 8) {
+                    ForEach(actions) { a in
+                        HStack(spacing: 4) {
+                            Button(action: a.run) {
+                                Label(a.title, systemImage: a.symbol).frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            Button { hub.togglePin(a) } label: {
+                                Image(systemName: hub.isPinned(a) ? "pin.fill" : "pin")
+                            }
+                            .buttonStyle(.borderless)
+                            .help(hub.isPinned(a) ? "Unpin from menu" : "Pin to menu")
+                        }
+                    }
+                }
+                .padding(6)
+            }
+        }
+
+        GroupBox("Information") {
+            InfoGrid(rows: [InfoRow("Category", device.kind.title),
+                            InfoRow("Last connected", device.isConnected ? "Now" : (device.lastConnected?.formatted(date: .abbreviated, time: .shortened) ?? "Unknown"))]
+                     + device.info)
+                .padding(6)
+        }
+
+        if !device.isConnected && hub.isKnownToSystem(device) {
+            Text(device.kind == .printer
+                 ? "To remove this printer, delete it in Printers & Scanners."
+                 : "macOS still has this device paired. To remove it, unpair it in Bluetooth Settings.")
+                .font(.caption).foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        } else if !device.isConnected {
+            HStack {
+                Spacer()
+                Button("Forget Device…", role: .destructive) { confirmForget = true }
+            }
+            .confirmationDialog("Forget \(device.name)?", isPresented: $confirmForget) {
+                Button("Forget", role: .destructive) { hub.forget(device) }
+            } message: {
+                Text("It is removed from FastGlance's history. Bluetooth pairing is not affected.")
+            }
+        }
+    }
+
+    @ViewBuilder private func advanced(_ sections: [InfoSection]) -> some View {
+        ForEach(sections) { s in
+            GroupBox(s.title) { InfoGrid(rows: s.rows).padding(6) }
+        }
+        if !device.raw.isEmpty {
+            GroupBox {
+                DisclosureGroup("Raw properties (\(device.raw.count))") {
+                    InfoGrid(rows: device.raw).padding(.top, 6)
+                    Button("Copy All") {
+                        Util.copy(device.raw.map { "\($0.key): \($0.value)" }.joined(separator: "\n"))
+                    }
+                    .padding(.top, 4)
+                }
+                .padding(6)
+            }
         }
     }
 
@@ -218,5 +253,29 @@ struct InfoGrid: View {
         }
         .font(.callout)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// A collapsible tool. Its view is only built while expanded, so a collapsed tool polls nothing.
+struct ToolBox: View {
+    let tool: DeviceTool
+    @AppStorage("expandedTools") private var expanded = ""  // comma-separated tool ids
+
+    var body: some View {
+        let open = Binding(
+            get: { expanded.split(separator: ",").contains { $0 == tool.id } },
+            set: { on in
+                var ids = Set(expanded.split(separator: ",").map(String.init))
+                if on { ids.insert(tool.id) } else { ids.remove(tool.id) }
+                expanded = ids.sorted().joined(separator: ",")
+            })
+        GroupBox {
+            DisclosureGroup(isExpanded: open) {
+                if open.wrappedValue { tool.view().padding(.top, 8) }
+            } label: {
+                Label(tool.title, systemImage: tool.symbol).font(.headline)
+            }
+            .padding(6)
+        }
     }
 }

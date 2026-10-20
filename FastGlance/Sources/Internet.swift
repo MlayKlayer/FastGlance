@@ -1,3 +1,4 @@
+import SwiftUI
 import CoreWLAN
 import CoreLocation
 import Network
@@ -16,6 +17,9 @@ import Darwin
     private var gatewayMAC: String?
     private var gatewayKnown = false
     private var hotspotStart: (iface: String, bytes: UInt64)?
+    private var iface: String?
+    private var dns: (servers: [String], domains: [String]) = ([], [])
+    private var gateway6: String?
 
     func start() {
         location.delegate = self
@@ -41,8 +45,12 @@ import Darwin
         DispatchQueue.global(qos: .utility).async {
             let gw = NetworkSource.parseGateway(Util.text("/sbin/route", ["-n", "get", "default"]))
             let mac = gw.flatMap { NetworkSource.parseARP(Util.text("/usr/sbin/arp", ["-n", $0]))[$0] }
+            let dns = NetTools.dns(Util.text("/usr/sbin/scutil", ["--dns"]))
+            let gw6 = NetworkSource.parseGateway(Util.text("/sbin/route", ["-n", "get", "-inet6", "default"]))
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
+                    self.dns = dns
+                    self.gateway6 = gw6
                     // The MAC is the row's id; a missed ARP lookup on the same router mustn't turn it into a new device.
                     self.gatewayMAC = mac ?? (gw == self.gateway ? self.gatewayMAC : nil)
                     self.gateway = gw
@@ -64,6 +72,7 @@ import Darwin
         let usesWiFi = path.usesInterfaceType(.wifi)
         let usesEthernet = path.usesInterfaceType(.wiredEthernet)
         let iface = path.availableInterfaces.first { path.usesInterfaceType($0.type) }?.name
+        self.iface = iface
         // macOS marks an iPhone's Personal Hotspot as an "expensive" (metered) Wi-Fi network.
         let hotspot = usesWiFi && path.isExpensive
         let ssid = usesWiFi ? wifi?.ssid() : nil
@@ -95,7 +104,7 @@ import Darwin
             info.append(InfoRow("Security", Self.securityName(wifi.security())))
         }
 
-        if hotspot, let iface, let total = Self.interfaceBytes(iface) {
+        if hotspot, let iface, let total = Self.interfaceBytes(iface).map({ $0.received + $0.sent }) {
             if hotspotStart?.iface != iface { hotspotStart = (iface, total) }
             let used = total &- (hotspotStart?.bytes ?? total)
             status.append("\(Util.bytes(Int(used))) used")
@@ -144,6 +153,34 @@ import Darwin
         return out
     }
 
+    func sections(for device: Device) -> [InfoSection] {
+        guard device.isConnected, let iface else { return [] }
+        var addresses = [InfoRow("Interface", iface)] + NetTools.interfaceRows(iface)
+        if let gateway { addresses.append(InfoRow("IPv4 router", gateway)) }
+        if let gateway6 { addresses.append(InfoRow("IPv6 router", gateway6.components(separatedBy: "%").first ?? gateway6)) }
+        var out = [InfoSection(title: "Addresses", rows: addresses)]
+        var dnsRows = dns.servers.enumerated().map { InfoRow("Server \($0 + 1)", $1) }
+        if !dns.domains.isEmpty { dnsRows.append(InfoRow("Search domains", dns.domains.joined(separator: ", "))) }
+        if !dnsRows.isEmpty { out.append(InfoSection(title: "DNS", rows: dnsRows)) }
+        return out
+    }
+
+    func tools(for device: Device) -> [DeviceTool] {
+        guard device.isConnected else { return [] }
+        let hotspot = device.icon == "personalhotspot"
+        var out = [DeviceTool(id: "net.latency", title: "Latency", symbol: "waveform.path.ecg") { [gateway] in
+            AnyView(LatencyTool(gateway: gateway, gatewayTitle: hotspot ? "iPhone" : "Router"))
+        }]
+        if let iface {
+            out.append(DeviceTool(id: "net.traffic", title: "Traffic", symbol: "arrow.up.arrow.down") { AnyView(TrafficTool(iface: iface)) })
+        }
+        out.append(DeviceTool(id: "net.dns", title: "DNS", symbol: "server.rack") { [dns] in AnyView(DNSTool(servers: dns.servers)) })
+        if device.icon != "network" {
+            out.append(DeviceTool(id: "net.wifiscan", title: "Wi-Fi Networks Nearby", symbol: "wifi") { AnyView(WiFiScanTool()) })
+        }
+        return out
+    }
+
     // MARK: - Helpers
 
     nonisolated static func signalWord(_ rssi: Int) -> String {
@@ -181,22 +218,22 @@ import Darwin
         NetworkSource.interfaceIPv4s().first { $0.iface == iface }?.ip
     }
 
-    /// 64-bit in+out byte counters for one interface (getifaddrs only has 32-bit ones that wrap at 4 GB).
-    nonisolated static func interfaceBytes(_ iface: String) -> UInt64? {
+    /// 64-bit byte counters for one interface (getifaddrs only has 32-bit ones that wrap at 4 GB).
+    nonisolated static func interfaceBytes(_ iface: String) -> (received: UInt64, sent: UInt64)? {
         var mib: [Int32] = [CTL_NET, PF_ROUTE, 0, 0, NET_RT_IFLIST2, 0]
         var len = 0
         guard sysctl(&mib, 6, nil, &len, nil, 0) == 0 else { return nil }
         var buf = [UInt8](repeating: 0, count: len)
         guard sysctl(&mib, 6, &buf, &len, nil, 0) == 0 else { return nil }
         let index = if_nametoindex(iface)
-        return buf.withUnsafeBytes { raw -> UInt64? in
+        return buf.withUnsafeBytes { raw -> (received: UInt64, sent: UInt64)? in
             var offset = 0
             while offset + MemoryLayout<if_msghdr>.size <= len {
                 let hdr = raw.loadUnaligned(fromByteOffset: offset, as: if_msghdr.self)
                 guard hdr.ifm_msglen > 0 else { return nil }
                 if Int32(hdr.ifm_type) == RTM_IFINFO2, offset + MemoryLayout<if_msghdr2>.size <= len {
                     let m = raw.loadUnaligned(fromByteOffset: offset, as: if_msghdr2.self)
-                    if UInt32(m.ifm_index) == index { return m.ifm_data.ifi_ibytes + m.ifm_data.ifi_obytes }
+                    if UInt32(m.ifm_index) == index { return (m.ifm_data.ifi_ibytes, m.ifm_data.ifi_obytes) }
                 }
                 offset += Int(hdr.ifm_msglen)
             }

@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import CoreGraphics
 
 @MainActor final class DisplaySource: DeviceSource {
@@ -220,12 +221,82 @@ import CoreGraphics
         return out
     }
 
-    /// Usable modes, largest first, one per resolution/refresh pair.
+    func tools(for device: Device) -> [DeviceTool] {
+        guard let d = ids[device.id] else { return [] }
+        let screen = Self.screen(d)
+        return [DeviceTool(id: "display.patterns", title: "Test Patterns", symbol: "square.grid.3x3.middle.filled") {
+            AnyView(TestPatternTool(screen: screen))
+        }]
+    }
+
+    func sections(for device: Device) -> [InfoSection] {
+        guard let d = ids[device.id], let mode = CGDisplayCopyDisplayMode(d) else { return [] }
+        let screen = Self.screen(d)
+        let native = Self.nativeWidthHeight(d) ?? (mode.pixelWidth, mode.pixelHeight)
+        var panel = [InfoRow("Native resolution", "\(native.0) × \(native.1) px"),
+                     InfoRow("Rendered at", "\(mode.pixelWidth) × \(mode.pixelHeight) px"),
+                     InfoRow("Looks like", "\(mode.width) × \(mode.height)"),
+                     InfoRow("HiDPI", mode.pixelWidth > mode.width ? String(format: "Yes (%g×)", Double(mode.pixelWidth) / Double(mode.width)) : "No")]
+        if let ppi = Self.ppi(pixels: native.0, mm: CGDisplayScreenSize(d).width) {
+            panel.append(InfoRow("Pixel density", String(format: "%.0f ppi", ppi)))
+        }
+        var color: [InfoRow] = []
+        if let screen {
+            let fastest = (1 / screen.minimumRefreshInterval).rounded(), slowest = (1 / screen.maximumRefreshInterval).rounded()
+            panel.append(InfoRow("Refresh", fastest > slowest ? "Adaptive, \(Int(slowest))–\(Int(fastest)) Hz" : "\(Int(fastest)) Hz"))
+            if screen.safeAreaInsets.top > 0 { panel.append(InfoRow("Camera housing", "Yes, \(Int(screen.safeAreaInsets.top)) pt")) }
+            let potential = screen.maximumPotentialExtendedDynamicRangeColorComponentValue
+            color = [InfoRow("Colour space", screen.colorSpace?.localizedName ?? "—"),
+                     InfoRow("Wide colour (P3)", screen.canRepresent(.p3) ? "Yes" : "No"),
+                     InfoRow("Bits per channel", "\(screen.depth.bitsPerSample)"),
+                     InfoRow("Extended range (EDR)", Self.edrText(potential: Double(potential)))]
+            if potential > 1 {
+                color.append(InfoRow("EDR headroom now", String(format: "%.1f×", screen.maximumExtendedDynamicRangeColorComponentValue)))
+                if screen.maximumReferenceExtendedDynamicRangeColorComponentValue > 0 { color.append(InfoRow("Reference mode", "On")) }
+            }
+        }
+        let current = (mode.width, mode.height, Int(mode.refreshRate.rounded()))
+        let modes = Self.modes(d).map { m in
+            let hz = Int(m.refreshRate.rounded())
+            let notes = [hz > 0 ? "\(hz) Hz" : nil, m.pixelWidth > m.width ? "HiDPI" : nil,
+                         (m.width, m.height, hz) == current ? "Current" : nil].compactMap { $0 }
+            return InfoRow("\(m.width) × \(m.height)", notes.joined(separator: " · "))
+        }
+        return [InfoSection(title: "Panel", rows: panel)]
+            + (color.isEmpty ? [] : [InfoSection(title: "Colour & HDR", rows: color)])
+            + (modes.isEmpty ? [] : [InfoSection(title: "Modes (\(modes.count))", rows: modes)])
+    }
+
+    static func screen(_ d: CGDirectDisplayID) -> NSScreen? {
+        NSScreen.screens.first { $0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID == d }
+    }
+
+    /// The panel's own pixel grid: the mode IOKit flags native (kDisplayModeNativeFlag, not exported to Swift).
+    private static func nativeWidthHeight(_ d: CGDirectDisplayID) -> (Int, Int)? {
+        allModes(d).filter { $0.ioFlags & 0x0200_0000 != 0 }.max { $0.pixelWidth < $1.pixelWidth }.map { ($0.pixelWidth, $0.pixelHeight) }
+    }
+
+    nonisolated static func ppi(pixels: Int, mm: Double) -> Double? {
+        mm > 1 && pixels > 0 ? Double(pixels) / (mm / 25.4) : nil
+    }
+
+    /// EDR headroom: how much brighter than SDR white HDR content may go. XDR panels reach 16×; other Macs
+    /// get a little from spare backlight, and it shrinks as brightness goes up.
+    nonisolated static func edrText(potential: Double) -> String {
+        potential > 1.01 ? String(format: "Up to %.1f× SDR white", potential) : "None (SDR only)"
+    }
+
+    /// Every mode, HiDPI ones included: without the option the list has only 1:1 modes, and not the scaled one in use.
+    private static func allModes(_ d: CGDirectDisplayID) -> [CGDisplayMode] {
+        let options = [kCGDisplayShowDuplicateLowResolutionModes: kCFBooleanTrue] as CFDictionary
+        return CGDisplayCopyAllDisplayModes(d, options) as? [CGDisplayMode] ?? []
+    }
+
+    /// Usable modes, largest first, one per resolution/refresh pair; the HiDPI variant wins over its blurry 1:1 twin.
     private static func modes(_ d: CGDirectDisplayID) -> [CGDisplayMode] {
-        let all = CGDisplayCopyAllDisplayModes(d, nil) as? [CGDisplayMode] ?? []
         var seen = Set<String>()
-        return all.filter { $0.isUsableForDesktopGUI() }
-            .sorted { ($0.width, $0.refreshRate) > ($1.width, $1.refreshRate) }
+        return allModes(d).filter { $0.isUsableForDesktopGUI() }
+            .sorted { ($0.width, $0.refreshRate, $0.pixelWidth) > ($1.width, $1.refreshRate, $1.pixelWidth) }
             .filter { seen.insert("\($0.width)x\($0.height)@\(Int($0.refreshRate))").inserted }
     }
 

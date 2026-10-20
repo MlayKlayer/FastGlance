@@ -192,6 +192,109 @@ enum CA {
         return out
     }
 
+    func sections(for device: Device) -> [InfoSection] {
+        guard let a = dev(for: device) else { return [] }
+        return sections(for: a)
+    }
+
+    /// Hardware details straight from the HAL. Shared with Bluetooth rows.
+    func sections(for a: AudioDev) -> [InfoSection] {
+        let global = kAudioObjectPropertyScopeGlobal
+        let rate = CA.get(a.id, kAudioDevicePropertyNominalSampleRate, global, Float64(0)) ?? 0
+        func frames(_ n: UInt32) -> String {
+            rate > 0 ? String(format: "%d frames (%.2f ms)", n, Double(n) / rate * 1000) : "\(n) frames"
+        }
+        var out: [InfoSection] = []
+        for (scope, title) in [(kAudioObjectPropertyScopeOutput, "Output"), (kAudioObjectPropertyScopeInput, "Input")] {
+            let streams = CA.array(a.id, kAudioDevicePropertyStreams, scope, zero: AudioStreamID(0))
+            guard let stream = streams.first else { continue }
+            let count = channelCount(a.id, scope)
+            var rows = [InfoRow("Channels", "\(count) in \(streams.count) stream\(streams.count == 1 ? "" : "s")")]
+            // Many drivers just echo the channel number back; only real names are worth a row.
+            let names = (1...max(count, 1)).map { ch in channelName(a.id, scope, UInt32(ch)).flatMap { $0 == "\(ch)" ? nil : $0 } }
+            if names.contains(where: { $0 != nil }) {
+                rows.append(InfoRow("Channel names", names.enumerated().map { "\($0 + 1): \($1 ?? "—")" }.joined(separator: ", ")))
+            }
+            if let f = CA.get(stream, kAudioStreamPropertyPhysicalFormat, global, AudioStreamBasicDescription()) {
+                rows.append(InfoRow("Hardware format", Self.formatName(bits: f.mBitsPerChannel, flags: f.mFormatFlags)))
+            }
+            let device = CA.get(a.id, kAudioDevicePropertyLatency, scope, UInt32(0)) ?? 0
+            let safety = CA.get(a.id, kAudioDevicePropertySafetyOffset, scope, UInt32(0)) ?? 0
+            let streamLatency = CA.get(stream, kAudioStreamPropertyLatency, global, UInt32(0)) ?? 0
+            rows += [InfoRow("Device latency", frames(device)), InfoRow("Stream latency", frames(streamLatency)),
+                     InfoRow("Safety offset", frames(safety)),
+                     InfoRow("Fixed latency", frames(device + streamLatency + safety) + ", plus each app's buffer")]
+            out.append(InfoSection(title: title, rows: rows))
+        }
+
+        var clock: [InfoRow] = []
+        let rates = CA.array(a.id, kAudioDevicePropertyAvailableNominalSampleRates, global, zero: AudioValueRange())
+        if !rates.isEmpty { clock.append(InfoRow("Sample rates", Self.rateList(rates))) }
+        if let r = CA.get(a.id, kAudioDevicePropertyBufferFrameSizeRange, global, AudioValueRange()) {
+            clock.append(InfoRow("Buffer range", "\(Int(r.mMinimum))–\(Int(r.mMaximum)) frames (each app picks its own)"))
+        }
+        for scope in [global, kAudioObjectPropertyScopeOutput, kAudioObjectPropertyScopeInput] {
+            guard let src = CA.get(a.id, kAudioDevicePropertyClockSource, scope, UInt32(0)) else { continue }
+            clock.append(InfoRow("Clock source", clockSourceName(a.id, scope, src) ?? "ID \(src)"))
+            break
+        }
+        if let running = CA.get(a.id, kAudioDevicePropertyDeviceIsRunningSomewhere, global, UInt32(0)) {
+            clock.append(InfoRow("In use by an app", running != 0 ? "Yes" : "No"))
+        }
+        if !clock.isEmpty { out.append(InfoSection(title: "Clock & Buffer", rows: clock)) }
+        return out
+    }
+
+    private func channelCount(_ id: AudioObjectID, _ scope: AudioObjectPropertyScope) -> Int {
+        var a = CA.addr(kAudioDevicePropertyStreamConfiguration, scope)
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(id, &a, 0, nil, &size) == noErr, size > 0 else { return 0 }
+        let raw = UnsafeMutableRawPointer.allocate(byteCount: Int(size), alignment: MemoryLayout<AudioBufferList>.alignment)
+        defer { raw.deallocate() }
+        guard AudioObjectGetPropertyData(id, &a, 0, nil, &size, raw) == noErr else { return 0 }
+        return UnsafeMutableAudioBufferListPointer(raw.assumingMemoryBound(to: AudioBufferList.self)).reduce(0) { $0 + Int($1.mNumberChannels) }
+    }
+
+    private func channelName(_ id: AudioObjectID, _ scope: AudioObjectPropertyScope, _ channel: UInt32) -> String? {
+        var a = AudioObjectPropertyAddress(mSelector: kAudioObjectPropertyElementName, mScope: scope, mElement: channel)
+        guard AudioObjectHasProperty(id, &a) else { return nil }
+        var cf: Unmanaged<CFString>?
+        var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        guard AudioObjectGetPropertyData(id, &a, 0, nil, &size, &cf) == noErr, let s = cf?.takeRetainedValue() as String?, !s.isEmpty else { return nil }
+        return s
+    }
+
+    private func clockSourceName(_ id: AudioObjectID, _ scope: AudioObjectPropertyScope, _ source: UInt32) -> String? {
+        var a = CA.addr(kAudioDevicePropertyClockSourceNameForIDCFString, scope)
+        var input = source
+        var cf: Unmanaged<CFString>?
+        var size = UInt32(MemoryLayout<AudioValueTranslation>.size)
+        let status = withUnsafeMutablePointer(to: &input) { inPtr in
+            withUnsafeMutablePointer(to: &cf) { outPtr in
+                var t = AudioValueTranslation(mInputData: inPtr, mInputDataSize: UInt32(MemoryLayout<UInt32>.size),
+                                              mOutputData: outPtr, mOutputDataSize: UInt32(MemoryLayout<Unmanaged<CFString>?>.size))
+                return AudioObjectGetPropertyData(id, &a, 0, nil, &size, &t)
+            }
+        }
+        guard status == noErr else { return nil }
+        return cf?.takeRetainedValue() as String?
+    }
+
+    nonisolated static func formatName(bits: UInt32, flags: AudioFormatFlags) -> String {
+        let float = flags & kAudioFormatFlagIsFloat != 0
+        return bits == 0 ? "Compressed" : "\(bits)-bit \(float ? "float" : "integer")"
+    }
+
+    /// "44.1, 48, 96 kHz", or a range when the device takes any rate in between.
+    nonisolated static func rateList(_ ranges: [AudioValueRange]) -> String {
+        func k(_ v: Float64) -> String { v.truncatingRemainder(dividingBy: 1000) == 0 ? "\(Int(v / 1000))" : String(format: "%.1f", v / 1000) }
+        let parts = ranges.sorted { $0.mMinimum < $1.mMinimum }.map {
+            $0.mMinimum == $0.mMaximum ? k($0.mMinimum) : "\(k($0.mMinimum))–\(k($0.mMaximum))"
+        }
+        var seen = Set<String>()
+        return parts.filter { seen.insert($0).inserted }.joined(separator: ", ") + " kHz"
+    }
+
     // MARK: - Operations
 
     func setDefault(output id: AudioObjectID) {
