@@ -66,6 +66,7 @@ import IOKit.pwr_mgt
 
     private func unmountAll(then done: @escaping () -> Void) {
         let targets = disks.localVolumes
+        for name in disks.verifyingNames { ledger.failed("\(name): left mounted, Verify was running") }
         guard !targets.isEmpty else { return done() }
 
         let group = DispatchGroup()
